@@ -220,7 +220,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             <div className="z-10 w-full max-w-5xl px-2 h-full flex flex-col justify-center min-h-[500px]">
                 <div className="text-center space-y-4 mb-8 shrink-0">
                     <h1 className="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 tracking-tighter drop-shadow-2xl py-2">MANSUKE<br/>WEREWOLF</h1>
-                    <p className="text-sm text-gray-500 font-mono">Ver 5.0 Beta</p>
+                    <p className="text-sm text-gray-500 font-mono">Server Edition Ver 1.0</p>
                 </div>
 
                 <div className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative w-full mx-auto flex flex-col h-auto">
