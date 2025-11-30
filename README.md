@@ -3,8 +3,7 @@
 対面でもオンラインでもスムーズにゲームを進行できるゲームマスター（GM）機能を提供します。
 
 ## 開発者
-Hiraku Matsuo, Eishin Nobuyama, Ren Uehara
-Gemini 3
+Hiraku Matsuo, Eishin Nobuyama, Ren Uehara, Gemini 3
 
 ## 注意
 部屋を作成できるのは、**管理者用パスコードを知っている開発者本人のみ**になります。
