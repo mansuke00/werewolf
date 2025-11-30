@@ -4,6 +4,7 @@
 
 ## 開発者
 Hiraku Matsuo, Eishin Nobuyama, Ren Uehara, Gemini 3
+README更新: Eishin Nobuyama
 
 ## 注意
 部屋を作成できるのは、**管理者用パスコードを知っている開発者本人のみ**になります。
