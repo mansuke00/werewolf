@@ -156,21 +156,67 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
 
         // 処刑者がいる場合
         if (room.executionResult) {
-            setOverlay({ 
-                title: "夜になりました", 
-                subtitle: room.executionResult, 
-                duration: 5000, 
-                isNight: true, 
-                onComplete: () => { 
-                    setOverlay({ 
-                        title: "夜になりました", 
-                        subtitle: "能力者は行動してください", 
-                        duration: 4000, 
-                        isNight: true, 
-                        onComplete: () => setOverlay(null) 
-                    }); 
-                }
-            });
+            // 自分が処刑されたかチェック
+            const me = players.find(p => p.id === user.uid);
+            const isMyExecution = me?.status === 'dead' && me?.deathReason === '投票による処刑' && me?.diedDay === room.day;
+
+            if (isMyExecution) {
+                // 自分が死んだ場合：YOU DIEDを表示
+                const myDeathContent = (
+                    <div className="mt-6 flex flex-col items-center animate-fade-in-up w-full px-4">
+                        <div className="bg-red-950/90 border-4 border-red-600 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(220,38,38,0.5)] max-w-lg w-full relative overflow-hidden">
+                            <div className="bg-black/50 p-6 rounded-full border-2 border-red-500 shadow-xl relative z-10 animate-bounce-slow">
+                                <Skull size={64} className="text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"/>
+                            </div>
+                            <div className="text-center space-y-4 relative z-10">
+                                <h3 className="text-4xl font-black text-white tracking-widest drop-shadow-md">YOU DIED</h3>
+                                <div className="py-3 px-6 bg-black/60 rounded-xl border border-red-500/50 backdrop-blur-sm">
+                                    <span className="text-sm text-red-300 font-bold uppercase tracking-wider block mb-1">CAUSE OF DEATH</span>
+                                    <p className="text-2xl font-black text-white">投票による処刑</p>
+                                </div>
+                                <div className="inline-block mt-2">
+                                    <p className="text-white font-bold bg-gradient-to-r from-red-900 to-black px-6 py-2 rounded-full border border-red-500/30 shadow-lg text-sm">
+                                        霊界で試合の様子を見守りましょう！
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+
+                setOverlay({ 
+                    title: "", 
+                    subtitle: myDeathContent, 
+                    duration: 8000, 
+                    isNight: true, 
+                    onComplete: () => { 
+                        setOverlay({ 
+                            title: "夜になりました", 
+                            subtitle: "能力者は行動してください", 
+                            duration: 4000, 
+                            isNight: true, 
+                            onComplete: () => setOverlay(null) 
+                        }); 
+                    }
+                });
+            } else {
+                // 他人が処刑された場合：通常のアナウンス
+                setOverlay({ 
+                    title: "夜になりました", 
+                    subtitle: room.executionResult, 
+                    duration: 5000, 
+                    isNight: true, 
+                    onComplete: () => { 
+                        setOverlay({ 
+                            title: "夜になりました", 
+                            subtitle: "能力者は行動してください", 
+                            duration: 4000, 
+                            isNight: true, 
+                            onComplete: () => setOverlay(null) 
+                        }); 
+                    }
+                });
+            }
         } else {
             // 処刑なしの場合
             setOverlay({ 
@@ -205,9 +251,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
             // 朝のアナウンスフェーズの演出（死亡通知、覚醒通知）
             if (room.phase.startsWith('announcement_')) { 
                  const isMyDeath = myPlayer?.status === 'dead' && (myPlayer?.diedDay === room.day - 1 || myPlayer?.diedDay === room.day);
+                 // 処刑による死亡の場合は夜にYOU DIEDを出しているので、朝は出さない
+                 const isExecution = myPlayer?.deathReason === '投票による処刑';
                  
                  let myDeathContent = null;
-                 if (isMyDeath) {
+                 if (isMyDeath && !isExecution) {
                      const reason = myPlayer?.deathReason || "不明";
                      myDeathContent = (
                          <div className="mt-6 flex flex-col items-center animate-fade-in-up w-full px-4">
@@ -265,10 +313,10 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                  }
 
                  setOverlay({ 
-                    title: isMyDeath ? "" : `${room.day}日目の朝`, 
+                    title: (isMyDeath && !isExecution) ? "" : `${room.day}日目の朝`, 
                     subtitle: (
                         <div className="flex flex-col items-center gap-4 w-full">
-                            {!isMyDeath && <p className="text-lg">{room.deathResult || "昨晩は誰も死亡しませんでした..."}</p>}
+                            {(!isMyDeath || isExecution) && <p className="text-lg">{room.deathResult || "昨晩は誰も死亡しませんでした..."}</p>}
                             {myDeathContent}
                             {awakeningContent}
                         </div>

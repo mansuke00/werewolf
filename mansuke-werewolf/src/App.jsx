@@ -52,6 +52,11 @@ export default function App() {
         else if (d.status === 'finished' || d.status === 'aborted') setView('result'); 
         else if (d.status === 'closed') { setNotification({message:"解散されました", type:"error"}); setView('home'); setRoomCode(""); } 
         else setView('lobby');
+      } else {
+        // 部屋ドキュメントが存在しない場合（削除されたなど）もホームへ戻す
+        setNotification({message:"部屋が見つかりません", type:"error"});
+        setView('home');
+        setRoomCode("");
       }
     });
 
