@@ -26,6 +26,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
     
     // モーダル・ローディング
     const [showManualInputModal, setShowManualInputModal] = useState(false);
+    const [showSpectatorConfirmModal, setShowSpectatorConfirmModal] = useState(false); // 観戦参加確認モーダル
     const [isValidatingRoom, setIsValidatingRoom] = useState(false);
 
     // 管理者パスワードの取得
@@ -55,6 +56,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
     // 部屋リストのリアルタイム監視
     useEffect(() => {
+        if (!user) return;
+
         const q = query(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const allRooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -71,9 +74,11 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             // 新しい順にソート
             filteredRooms.sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
             setAvailableRooms(filteredRooms);
+        }, (error) => {
+            console.log("Room list fetch paused or failed:", error.message);
         });
         return () => unsubscribe();
-    }, [homeStep]);
+    }, [homeStep, user]);
 
     const validateAdminPass = (pass) => { 
         if (adminPass === null) {
@@ -111,23 +116,18 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             if (roomSnap.exists()) {
                 const roomData = roomSnap.data();
                 
-                // 途中参加モードかどうかの判定（観戦として参加）
-                const isSpectateMode = homeStep === 'spectateRoomList' || homeMode === 'spectate';
-
                 if (roomData.status === 'waiting') {
                     // 待機中はどちらでも参加可能
                     setShowManualInputModal(false);
                     setHomeStep('nickname');
                     setHomeMode('join');
-                } else if (['playing', 'finished', 'aborted', 'closed'].includes(roomData.status)) {
-                    // ゲーム中・終了後は観戦のみ
-                    if (isSpectateMode || confirm("その部屋はゲーム中または終了しています。観戦者として参加しますか？")) {
-                        setShowManualInputModal(false);
-                        setHomeStep('nickname');
-                        setHomeMode('spectate');
-                    }
+                } else if (roomData.status === 'playing') {
+                    // 進行中なら、ニックネーム入力前に観戦確認モーダルを出す
+                    setShowManualInputModal(false);
+                    setShowSpectatorConfirmModal(true);
                 } else {
-                    setNotification({ message: "現在この部屋には入れません", type: "error" });
+                    // 終了済み、中断、解散済みの場合
+                    setNotification({ message: "部屋が見つかりません", type: "error" });
                 }
             } else {
                 setNotification({ message: "部屋が見つかりません", type: "error" });
@@ -138,6 +138,13 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         } finally {
             setIsValidatingRoom(false);
         }
+    };
+
+    // 観戦モードへの切り替えを承認した場合
+    const confirmJoinSpectator = () => {
+        setShowSpectatorConfirmModal(false);
+        setHomeStep('nickname');
+        setHomeMode('spectate');
     };
 
     // 隠しコマンド処理（長押し開始）
@@ -214,11 +221,27 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
     const handleRoomSelect = (roomId) => {
         setRoomCodeInput(roomId);
-        setHomeStep('nickname');
-        if (homeStep === 'spectateRoomList') {
-            setHomeMode('spectate');
+        // リスト選択時もバリデーションと確認を挟む（setRoomCodeInputした上でhandleCheckRoomを呼ぶのと同義の処理）
+        setIsValidatingRoom(true);
+        // リストデータからステータスを取得（通信節約）
+        const targetRoom = availableRooms.find(r => r.id === roomId);
+        
+        if (targetRoom) {
+            if (targetRoom.status === 'waiting') {
+                setHomeStep('nickname');
+                setHomeMode('join');
+                setIsValidatingRoom(false);
+            } else if (targetRoom.status === 'playing') {
+                // 途中参加リストから選んだ場合も確認を出す
+                setShowSpectatorConfirmModal(true);
+                setIsValidatingRoom(false);
+            } else {
+                setNotification({ message: "部屋が見つかりません", type: "error" });
+                setIsValidatingRoom(false);
+            }
         } else {
-            setHomeMode('join');
+            // リスト更新のラグで消えている場合などは念のためサーバー確認
+            handleCheckRoom(); 
         }
     };
 
@@ -274,7 +297,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
     return (
         <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-y-auto pb-40">
-            <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none"><div className="absolute top-[10%] left-[20%] w-96 h-96 bg-purple-600/30 rounded-full mix-blend-screen filter blur-[100px] animate-blob"></div><div className="absolute top-[10%] right-[20%] w-96 h-96 bg-blue-600/30 rounded-full mix-blend-screen filter blur-[100px] animate-blob animation-delay-2000"></div></div>
+            {/* 画面右上の丸い要素を削除しました */}
             
             {showManualInputModal && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in">
@@ -295,6 +318,28 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                                 className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl py-3 font-bold transition flex items-center justify-center gap-2"
                             >
                                 {isValidatingRoom ? "確認中..." : <>次へ <ArrowRight size={18}/></>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 観戦参加確認モーダル（独自デザイン） */}
+            {showSpectatorConfirmModal && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-gray-900 border border-purple-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative text-center">
+                        <Eye size={48} className="text-purple-400 mx-auto mb-4 animate-pulse"/>
+                        <h3 className="text-xl font-bold text-white mb-2">この部屋でゲームが進行中です</h3>
+                        <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                            観戦者モードとして参加しますか？<br/>
+                            このゲームは観戦者として霊界に参加し、次回の試合からゲームに参加することができます。
+                        </p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowSpectatorConfirmModal(false)} className="flex-1 py-3 rounded-xl border border-gray-600 text-gray-400 font-bold hover:bg-gray-800 transition">
+                                キャンセル
+                            </button>
+                            <button onClick={confirmJoinSpectator} className="flex-1 py-3 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-500 transition shadow-lg shadow-purple-900/20">
+                                参加する
                             </button>
                         </div>
                     </div>
@@ -328,7 +373,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     >
                         MANSUKE<br/>WEREWOLF
                     </h1>
-                    <p className="text-sm text-gray-500 font-mono">Server Edition Ver 2.0</p>
+                    <p className="text-sm text-gray-500 font-mono">Server Edition Ver 2.1</p>
                 </div>
 
                 <div className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative w-full mx-auto flex flex-col h-auto">

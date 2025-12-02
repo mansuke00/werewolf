@@ -6,6 +6,7 @@ import { db, functions } from '../config/firebase';
 import { isPlayerOnline } from '../utils/helpers';
 import { ROLE_DEFINITIONS } from '../constants/gameData';
 import { RoleCounter } from '../components/game/RoleCounter';
+import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 
 export const LobbyScreen = ({ user, room, roomCode, players, setNotification, setView, setRoomCode }) => {
       if (!room) return (
@@ -24,6 +25,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       const [anonymousVoting, setAnonymousVoting] = useState(room.anonymousVoting !== undefined ? room.anonymousVoting : true);
       const [inPersonMode, setInPersonMode] = useState(room.inPersonMode !== undefined ? room.inPersonMode : false);
       const [loading, setLoading] = useState(false);
+      
+      // モーダル管理用State
+      const [modalConfig, setModalConfig] = useState(null);
 
       useEffect(() => {
           if (room) {
@@ -33,7 +37,6 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           }
       }, [room]);
 
-      // 観戦者を除いたプレイヤー数を計算（サーバーバリデーションと合わせる）
       const validPlayers = useMemo(() => players.filter(p => !p.isSpectator), [players]);
       const validPlayerCount = validPlayers.length;
       
@@ -67,32 +70,56 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           finally { setLoading(false); } 
       };
 
-      const handleForceClose = async () => { 
-          if(confirm("解散しますか？")) await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { status: 'closed' }); 
+      const confirmForceClose = () => {
+          setModalConfig({
+              title: "部屋の解散",
+              message: "本当にこの部屋を解散しますか？\n参加中のプレイヤーは全員ホームに戻されます。",
+              isDanger: true,
+              onConfirm: async () => {
+                  setModalConfig(null);
+                  await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { status: 'closed' });
+              },
+              onCancel: () => setModalConfig(null)
+          });
       };
 
-      const handleLeaveRoom = async () => {
-          if(confirm("本当に退出しますか？")) {
-              try {
-                  await deleteDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', user.uid));
-                  setView('home');
-                  setRoomCode("");
-                  setNotification({ message: "退出しました", type: "success" });
-              } catch(e) {
-                  setNotification({ message: "退出エラー: " + e.message, type: "error" });
-              }
-          }
+      const confirmLeaveRoom = () => {
+          setModalConfig({
+              title: "部屋からの退出",
+              message: "本当に退出しますか？",
+              isDanger: false,
+              onConfirm: async () => {
+                  setModalConfig(null);
+                  try {
+                      await deleteDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', user.uid));
+                      setView('home');
+                      setRoomCode("");
+                      setNotification({ message: "退出しました", type: "success" });
+                  } catch(e) {
+                      setNotification({ message: "退出エラー: " + e.message, type: "error" });
+                  }
+              },
+              onCancel: () => setModalConfig(null)
+          });
       };
 
-      const handleKickPlayer = async (playerId, playerName) => {
-          if(confirm(`${playerName} さんを退出させますか？`)) {
-              try {
-                  await deleteDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', playerId));
-                  setNotification({ message: `${playerName} さんを退出させました`, type: "success" });
-              } catch(e) {
-                  setNotification({ message: "操作エラー: " + e.message, type: "error" });
-              }
-          }
+      const confirmKickPlayer = (playerId, playerName) => {
+          setModalConfig({
+              title: "プレイヤーの追放",
+              message: `${playerName} さんを部屋から追放しますか？`,
+              isDanger: true,
+              confirmText: "追放する",
+              onConfirm: async () => {
+                  setModalConfig(null);
+                  try {
+                      await deleteDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', playerId));
+                      setNotification({ message: `${playerName} さんを退出させました`, type: "success" });
+                  } catch(e) {
+                      setNotification({ message: "操作エラー: " + e.message, type: "error" });
+                  }
+              },
+              onCancel: () => setModalConfig(null)
+          });
       };
 
       const handleUpdateSettings = (newSettings) => {
@@ -121,13 +148,14 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
 
       return (
           <div className="min-h-screen bg-gray-950 text-gray-100 font-sans pb-20 relative overflow-hidden">
+              {modalConfig && <ConfirmationModal {...modalConfig} />}
               <div className="fixed top-0 left-0 w-full h-full z-0 pointer-events-none"><div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[120px]"></div><div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-900/10 rounded-full blur-[120px]"></div></div>
               <div className="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
                   <div className="lg:col-span-4 space-y-6">
                       <div className="bg-gray-900/60 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl border border-gray-700/50 relative overflow-hidden">
                           <p className="text-gray-400 text-xs font-bold tracking-widest mb-2 uppercase">Room Code</p>
                           <div className="flex items-center gap-4 mb-4"><span className="text-6xl font-black text-white tracking-widest cursor-pointer" onClick={() => navigator.clipboard.writeText(roomCode)}>{roomCode}</span></div>
-                          <span className={`px-4 py-2 rounded-xl text-xs font-bold border ${totalAssigned === validPlayerCount ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"}`}>参加者: {validPlayerCount} ({players.length - validPlayerCount}観戦) / 配役: {totalAssigned}</span>
+                          <span className={`px-4 py-2 rounded-xl text-xs font-bold border ${totalAssigned === validPlayerCount ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"}`}>参加者: {validPlayerCount}名 / 配役: {totalAssigned}名</span>
                       </div>
                       <div className="bg-gray-900/60 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl border border-gray-700/50 h-[600px] flex flex-col">
                           <h3 className="text-xl font-bold mb-6 flex items-center gap-3 text-gray-200"><Users className="text-blue-400"/> 参加者一覧</h3>
@@ -143,7 +171,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                           {room.hostId === p.id && <Crown size={14} className="text-yellow-500"/>}
                                           {isHostUser && room.hostId !== p.id && (
                                               <button 
-                                                  onClick={() => handleKickPlayer(p.id, p.name)}
+                                                  onClick={() => confirmKickPlayer(p.id, p.name)}
                                                   className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition"
                                                   title="強制退出させる"
                                               >
@@ -160,9 +188,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                   <div className="lg:col-span-8 space-y-6">
                       <div className="flex justify-end">
                           {isHostUser ? (
-                              <button onClick={handleForceClose} className="bg-red-900/50 text-red-300 border border-red-500/50 px-4 py-2 rounded-xl text-sm hover:bg-red-800 transition">強制終了</button>
+                              <button onClick={confirmForceClose} className="bg-red-900/50 text-red-300 border border-red-500/50 px-4 py-2 rounded-xl text-sm hover:bg-red-800 transition">強制終了</button>
                           ) : (
-                              <button onClick={handleLeaveRoom} className="bg-gray-800 text-gray-300 border border-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-700 transition flex items-center gap-2">
+                              <button onClick={confirmLeaveRoom} className="bg-gray-800 text-gray-300 border border-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-700 transition flex items-center gap-2">
                                   <LogOut size={16}/> 退出する
                               </button>
                           )}

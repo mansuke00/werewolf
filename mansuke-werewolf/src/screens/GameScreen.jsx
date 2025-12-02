@@ -22,6 +22,7 @@ import { VotingResultModal } from '../components/game/VotingResultModal.jsx';
 import { OverlayNotification } from '../components/ui/OverlayNotification.jsx';
 import { Notification } from '../components/ui/Notification.jsx';
 import { InfoModal } from '../components/ui/InfoModal.jsx';
+import { ConfirmationModal } from '../components/ui/ConfirmationModal.jsx';
 
 export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView }) => {
     // 状態管理
@@ -35,11 +36,15 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
     const [graveMessages, setGraveMessages] = useState([]);
     const [logs, setLogs] = useState([]);
     
+    // Geminiチャットの状態をここで管理（コンポーネントがアンマウントされても維持するため）
+    const [geminiMessages, setGeminiMessages] = useState([]);
+    
     // 進行制御
     const [timeLeft, setTimeLeft] = useState(0);
     const [nightActionDone, setNightActionDone] = useState(false);
     const [voteSelection, setVoteSelection] = useState(null);
     const [hasVoted, setHasVoted] = useState(false);
+    const [isVotingSubmitting, setIsVotingSubmitting] = useState(false); // 投票処理中の状態
     
     // UI表示
     const [notification, setNotification] = useState(null);
@@ -54,6 +59,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
     const [selectedArchive, setSelectedArchive] = useState(null);
     const [showVoteResult, setShowVoteResult] = useState(false);
     const [showKickModal, setShowKickModal] = useState(false);
+    const [modalConfig, setModalConfig] = useState(null);
     
     const [hasShownWaitMessage, setHasShownWaitMessage] = useState(false);
     const [optimisticPhase, setOptimisticPhase] = useState(null); 
@@ -253,6 +259,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
             setLastActionResult(null);
             setHasShownWaitMessage(false);
             setIsReadyProcessing(false); 
+            setIsVotingSubmitting(false);
 
             if (roomPhase.startsWith('announcement_')) { 
                  const isMyDeath = myPlayer?.status === 'dead' && (myPlayer?.diedDay === roomDay - 1 || myPlayer?.diedDay === roomDay);
@@ -345,10 +352,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
         }
     }, [room, roomPhase, roomDay, isGameEnded, myPlayer, myRole, user.uid, players]);
 
-    // タイマー管理ロジック（依存配列を最小限にし、チャット更新等での再レンダリングを防ぐ）
+    // タイマー管理ロジック
     useEffect(() => {
         if (roomStatus !== 'playing' || !roomPhaseStartTime) return; 
 
+        // 更新間隔を短くして（250ms）、表示の遅れを目立たなくする
         const timer = setInterval(() => { 
             const now = Date.now(); 
             const start = getMillis(roomPhaseStartTime) || now; 
@@ -368,7 +376,12 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
             }
             
             const remaining = Math.max(0, Math.ceil((targetTime - now) / 1000));
-            setTimeLeft(remaining); 
+            
+            // ステート更新の最適化：値が変わったときだけ更新する
+            setTimeLeft(prev => {
+                if (prev !== remaining) return remaining;
+                return prev;
+            });
 
             if (remaining <= 0) {
                 // クライアント側での先行フェーズ遷移（見た目のレスポンス向上）
@@ -392,7 +405,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                     }, baseDelay);
                 }
             }
-        }, 1000);
+        }, 250); // チェック間隔を250msに変更
         return () => clearInterval(timer);
     }, [roomStatus, roomPhase, roomPhaseStartTime, roomNightAllDoneTime, hasShownWaitMessage, optimisticPhase]);
 
@@ -436,15 +449,22 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
         if(['werewolf','greatwolf'].includes(myRole)) channel = 'werewolf_team'; 
         else if(myRole === 'madman') channel = 'madman'; 
         else if(myRole === 'assassin') channel = 'assassin'; 
-        else if(myRole === 'teruteru') channel = 'teruteru';
+        
         await addDoc(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'teamChats'), { text, senderId: user.uid, senderName: myPlayer.name, createdAt: serverTimestamp(), channel, day: roomDay, phaseLabel: 'night' }); 
     };
     
     const handleSubmitVote = async () => { 
-        if(!voteSelection || !roomCode || !user) return; 
-        const fn = httpsCallable(functions, 'submitVote');
-        await fn({ roomCode, targetId: voteSelection });
-        setHasVoted(true); 
+        if(!voteSelection || !roomCode || !user || isVotingSubmitting) return; 
+        setIsVotingSubmitting(true);
+        try {
+            const fn = httpsCallable(functions, 'submitVote');
+            await fn({ roomCode, targetId: voteSelection });
+            setHasVoted(true); 
+        } catch (e) {
+            console.error(e);
+            setIsVotingSubmitting(false);
+            showNotify("投票に失敗しました。再試行してください。", "error");
+        }
     };
 
     const handleOpenArchive = (day, phase) => { 
@@ -455,24 +475,45 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
         setShowArchive(true); 
     };
 
-    const handleForceAbort = async () => {
-        if(confirm("強制終了しますか？")) {
-            try { const fn = httpsCallable(functions, 'abortGame'); await fn({ roomCode }); showNotify("強制終了しました", "success"); } catch(e) { showNotify("強制終了失敗", "error"); }
-        }
+    const confirmForceAbort = () => {
+        setModalConfig({
+            title: "ゲームの強制終了",
+            message: "進行中のゲームを強制終了しますか？\n全てのプレイヤーはリザルト画面へ遷移します。",
+            isDanger: true,
+            onConfirm: async () => {
+                setModalConfig(null);
+                try { 
+                    const fn = httpsCallable(functions, 'abortGame'); 
+                    await fn({ roomCode }); 
+                    showNotify("強制終了しました", "success"); 
+                } catch(e) { 
+                    showNotify("強制終了失敗", "error"); 
+                }
+            },
+            onCancel: () => setModalConfig(null)
+        });
     };
 
-    const handleKickPlayer = async (playerId) => {
+    const confirmKickPlayer = (playerId) => {
         const pName = players.find(p => p.id === playerId)?.name;
-        if(confirm(`${pName}さんを追放しますか？この操作は取り消せません。`)) {
-            try {
-                const fn = httpsCallable(functions, 'kickPlayer');
-                await fn({ roomCode, playerId });
-                setShowKickModal(false);
-                showNotify(`${pName}を追放しました`, "success");
-            } catch(e) {
-                showNotify("追放に失敗しました: " + e.message, "error");
-            }
-        }
+        setModalConfig({
+            title: "プレイヤーの追放",
+            message: `${pName} さんを追放しますか？\nこの操作は取り消せません。`,
+            isDanger: true,
+            confirmText: "追放する",
+            onConfirm: async () => {
+                setModalConfig(null);
+                try {
+                    const fn = httpsCallable(functions, 'kickPlayer');
+                    await fn({ roomCode, playerId });
+                    setShowKickModal(false);
+                    showNotify(`${pName}を追放しました`, "success");
+                } catch(e) {
+                    showNotify("追放に失敗しました: " + e.message, "error");
+                }
+            },
+            onCancel: () => setModalConfig(null)
+        });
     };
 
     if (isGameEnded) return <div className="min-h-screen bg-black flex items-center justify-center text-white"><Loader className="animate-spin mb-4"/><span className="ml-2 font-bold tracking-widest">FINISHING GAME...</span></div>;
@@ -495,8 +536,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
     const showActionPanel = !isDead && isSpecialRole;
     
     const teamChatTitle = ['werewolf', 'greatwolf'].includes(myRole) ? "人狼チャット" : `${ROLE_DEFINITIONS[myRole || 'citizen']?.name || myRole}チャット`;
-    // 役職チャット表示可能者（妖狐・呪われし者は不可）
-    const canSeeTeamChat = !isDead && ['werewolf', 'greatwolf', 'seer', 'medium', 'knight', 'trapper', 'sage', 'detective', 'madman', 'assassin', 'teruteru'].includes(myRole);
+    // 役職チャット表示可能者（妖狐・呪われし者・てるてる坊主は不可）
+    const canSeeTeamChat = !isDead && ['werewolf', 'greatwolf', 'seer', 'medium', 'knight', 'trapper', 'sage', 'detective', 'madman', 'assassin'].includes(myRole);
     const isHost = room.hostId === user.uid;
 
     const archiveButtons = [];
@@ -518,6 +559,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
 
     return (
         <div className="lg:h-screen min-h-screen flex flex-col bg-gray-950 text-gray-100 font-sans lg:overflow-hidden">
+            {modalConfig && <ConfirmationModal {...modalConfig} />}
             {overlay && <OverlayNotification {...overlay} />}
             {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
             
@@ -533,7 +575,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                             <div key={p.id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
                                 <span>{p.name}</span>
                                 {p.id !== user.uid && (
-                                    <button onClick={() => handleKickPlayer(p.id)} className="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-1">
+                                    <button onClick={() => confirmKickPlayer(p.id)} className="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-1">
                                         <UserMinus size={12}/> 追放
                                     </button>
                                 )}
@@ -557,7 +599,17 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                                 <button key={p.id} onClick={() => setVoteSelection(p.id)} disabled={timeLeft <= 0} className={`py-4 px-3 rounded-xl border-2 font-bold transition flex items-center justify-center ${voteSelection === p.id ? "bg-red-600 border-red-400 ring-2 ring-red-400 text-white shadow-xl scale-105" : "bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700"} disabled:opacity-50 disabled:cursor-not-allowed`}>{p.name}</button>
                             ))}
                         </div>
-                        <button onClick={handleSubmitVote} disabled={!voteSelection || timeLeft <= 0} className="mt-6 w-full py-4 rounded-full font-black text-xl transition shadow-xl bg-gradient-to-r from-red-600 to-pink-600 text-white hover:scale-105 hover:shadow-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 shrink-0">{timeLeft > 0 ? "投票を確定する" : "集計中..."}</button>
+                        <button 
+                            onClick={handleSubmitVote} 
+                            disabled={!voteSelection || timeLeft <= 0 || isVotingSubmitting} 
+                            className="mt-6 w-full py-4 rounded-full font-black text-xl transition shadow-xl bg-gradient-to-r from-red-600 to-pink-600 text-white hover:scale-105 hover:shadow-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 shrink-0 flex items-center justify-center gap-2"
+                        >
+                            {isVotingSubmitting ? (
+                                <Loader className="animate-spin text-white" size={24} />
+                            ) : (
+                                timeLeft > 0 ? "投票を確定する" : "集計中..."
+                            )}
+                        </button>
                     </div>
                 </div>
             )}
@@ -573,13 +625,12 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                     <div className={`px-4 py-2 rounded-xl border font-mono font-bold text-xl flex items-center gap-2 ${timeLeft < 10 && !isNight ? "bg-red-900/50 border-red-500 text-red-400" : "bg-gray-800 border-gray-700 text-white"}`}>
                         <Clock size={18}/><span>{isNight ? (roomNightAllDoneTime ? timeLeft : "∞") : timeLeft}<span className="text-sm ml-0.5">s</span></span>
                     </div>
-                    {inPersonMode && <div className="hidden md:flex items-center gap-2 text-xs font-bold text-blue-400 bg-blue-900/20 px-3 py-1 rounded-full border border-blue-500/30"><Mic size={12}/> 対面モード</div>}
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="text-xs text-gray-600 font-bold hidden md:block">ROOM: {roomCode}</div>
                     {isHost && (
                         <div className="flex gap-2">
-                            <button onClick={handleForceAbort} className="bg-red-900/80 text-white border border-red-500 px-3 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition flex items-center gap-2 shadow-lg"><LogOut size={14}/> 強制終了</button>
+                            <button onClick={confirmForceAbort} className="bg-red-900/80 text-white border border-red-500 px-3 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition flex items-center gap-2 shadow-lg"><LogOut size={14}/> 強制終了</button>
                             <button onClick={() => setShowKickModal(true)} className="bg-gray-800 text-gray-300 border border-gray-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-700 transition flex items-center gap-2"><UserMinus size={14}/> 追放</button>
                         </div>
                     )}
@@ -634,7 +685,14 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                                     <NightActionPanel myRole={myRole} players={players} onActionComplete={() => setNightActionDone(true)} myPlayer={safeMyPlayer} teammates={teammates || []} roomCode={roomCode} roomData={room} lastActionResult={lastActionResult} isDone={nightActionDone} />
                                 </div>
                             ) : (
-                                <GeminiChatPanel playerName={safeMyPlayer.name} inPersonMode={inPersonMode} gameContext={gameContext} currentDay={displayDay} />
+                                <GeminiChatPanel 
+                                    playerName={safeMyPlayer.name} 
+                                    inPersonMode={inPersonMode} 
+                                    gameContext={gameContext} 
+                                    currentDay={displayDay} 
+                                    messages={geminiMessages} 
+                                    setMessages={setGeminiMessages} 
+                                />
                             )}
                         </>
                     ) : (

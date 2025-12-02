@@ -277,6 +277,15 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
       let dead = [], logsSec = [], events = [], reasons = {};
       let atkId = null, wolfId = null, assassinTargetId = null, assassinId = null;
       
+      // 死因を追加するヘルパー関数（複数の死因を&で連結）
+      const addDeathReason = (id, reason) => {
+          if (reasons[id]) {
+              reasons[id] += `&${reason}`;
+          } else {
+              reasons[id] = reason;
+          }
+      };
+
       Object.values(actions).forEach(a => {
           if(['werewolf','greatwolf'].includes(a.role)) { atkId = a.targetId; wolfId = a.actorId; }
           if(a.role === 'assassin' && a.targetId !== 'skip') { assassinTargetId = a.targetId; assassinId = a.actorId; }
@@ -289,10 +298,10 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
           
           if (!assassinFailed) {
               dead.push(assassinTargetId);
-              reasons[assassinTargetId] = "暗殺者による暗殺";
+              addDeathReason(assassinTargetId, "暗殺"); // 死因変更: 暗殺者による暗殺 -> 暗殺
               const assassinTeam = getTeamMemberIds(players, 'assassin');
               const tgtName = players.find(p=>p.id===assassinTargetId)?.name;
-              logsSec.push({ text: `暗殺者チームは${tgtName}を暗殺しました。`, visibleTo: assassinTeam, secret: true });
+              // ログ廃止: logsSec.push({ text: `暗殺者チームは${tgtName}を暗殺しました。`, visibleTo: assassinTeam, secret: true });
               if (guards.includes(assassinTargetId)) {
                   logs.push({ text: `${tgtName}は護衛されていましたが、暗殺者の能力により貫通して殺されました。`, visibleTo: [], secret: true, phase: "霊界ログ" });
               }
@@ -305,7 +314,7 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
 
       let trapKill = false;
       if (Object.values(actions).some(a=>a.role==='trapper' && a.targetId===atkId) && wolfId) {
-        dead.push(wolfId); trapKill = true; reasons[wolfId] = "罠師の護衛先を襲撃したことによる返り討ち";
+        dead.push(wolfId); trapKill = true; addDeathReason(wolfId, "罠師の護衛先を襲撃したことによる返り討ち");
       }
 
       if (atkId && !trapKill) {
@@ -337,9 +346,9 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
         }
         
         if (success) {
-          dead.push(atkId); reasons[atkId] = "人狼による襲撃";
+          dead.push(atkId); addDeathReason(atkId, "人狼による襲撃");
           if (r==='killer' && wolfId) { 
-              dead.push(wolfId); reasons[wolfId] = "人狼キラーを襲撃したことの返り討ち"; 
+              dead.push(wolfId); addDeathReason(wolfId, "人狼キラーを襲撃したことの返り討ち"); 
               const wolfTeamIds = players.filter(p=>['werewolf','greatwolf','madman'].includes(p.role)).map(p=>p.id);
               logsSec.push({ text: `人狼チームは人狼キラー（${tgt.name}）を襲撃してしまったため、1人道連れで死亡します。`, visibleTo: wolfTeamIds, secret: true });
           }
@@ -349,7 +358,7 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
       Object.values(actions).forEach(a => {
         const tgt = players.find(p=>p.id===a.targetId);
         if ((a.role === 'seer' || a.role === 'sage') && tgt?.role === 'fox') { 
-            dead.push(a.targetId); reasons[a.targetId] = "妖狐が占われたことによる呪死"; 
+            dead.push(a.targetId); addDeathReason(a.targetId, "妖狐が占われたことによる呪死"); 
         }
       });
 
@@ -647,6 +656,7 @@ exports.kickPlayer = onCall(async (request) => {
     const roomRef = db.collection('artifacts').doc('mansuke-jinro').collection('public').doc('data').collection('rooms').doc(roomCode);
     
     await db.runTransaction(async (t) => {
+        // 1. 全ての読み取り操作を最初に行う
         const rSnap = await t.get(roomRef);
         if (!rSnap.exists) throw new HttpsError('not-found', '部屋が見つかりません');
         const room = rSnap.data();
@@ -654,6 +664,36 @@ exports.kickPlayer = onCall(async (request) => {
         const pRef = roomRef.collection('players').doc(playerId);
         const pSnap = await t.get(pRef);
         if (!pSnap.exists) throw new HttpsError('not-found', 'プレイヤーが見つかりません');
+        
+        const allPlayersSnap = await t.get(roomRef.collection('players'));
+        
+        const playersData = [];
+        // Promise.allを使って全プレイヤーのシークレット情報を取得
+        // トランザクション内なのでこれも最初にまとめて行う
+        const secretRefs = [];
+        const playerDocs = [];
+        
+        for (const docSnap of allPlayersSnap.docs) {
+            const p = { id: docSnap.id, ...docSnap.data() };
+            // キック対象のステータスはメモリ上で更新しておく
+            if (p.id === playerId) p.status = 'vanished';
+            
+            playerDocs.push(p);
+            secretRefs.push(docSnap.ref.collection('secret').doc('roleData'));
+        }
+        
+        const secretSnaps = await Promise.all(secretRefs.map(ref => t.get(ref)));
+        
+        for (let i = 0; i < playerDocs.length; i++) {
+            const p = playerDocs[i];
+            const sSnap = secretSnaps[i];
+            if (sSnap.exists) {
+                p.role = sSnap.data().role;
+            }
+            playersData.push(p);
+        }
+
+        // 2. 書き込み操作を開始
         
         // プレイヤーのステータス更新
         t.update(pRef, { status: 'vanished' });
@@ -663,23 +703,7 @@ exports.kickPlayer = onCall(async (request) => {
             logs: admin.firestore.FieldValue.arrayUnion({ text: `${pName}がホストにより追放されました。`, phase: "System", day: room.day }) 
         });
 
-        // 勝敗判定の再計算（データ取得方法を改善）
-        const allPlayersSnap = await t.get(roomRef.collection('players'));
-        
-        const playersData = [];
-        for (const docSnap of allPlayersSnap.docs) {
-            const p = { id: docSnap.id, ...docSnap.data() };
-            if (p.id === playerId) p.status = 'vanished';
-            
-            // role情報の取得
-            const sRef = docSnap.ref.collection('secret').doc('roleData');
-            const sSnap = await t.get(sRef);
-            if (sSnap.exists) {
-                p.role = sSnap.data().role;
-            }
-            playersData.push(p);
-        }
-
+        // 勝敗判定の再計算
         const deadIds = playersData.filter(p => p.status === 'dead' || p.status === 'vanished').map(p => p.id);
         const winner = checkWin(playersData, deadIds);
         

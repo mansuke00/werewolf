@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Sun, Moon, Loader, FileText, AlertOctagon, Trophy, Frown, RefreshCw, LogOut, Skull, Sparkles, Smile } from 'lucide-react';
+import { Sun, Moon, Loader, FileText, AlertOctagon, Trophy, Frown, RefreshCw, LogOut, Skull, Sparkles, Smile, Copy, Search, X } from 'lucide-react';
 import { getDoc, doc, updateDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase'; // ローカル環境の構成に基づいたパス
@@ -7,6 +7,8 @@ import { ROLE_DEFINITIONS } from '../constants/gameData';
 import { LogPanel } from '../components/game/LogPanel';
 import { DeadPlayerInfoPanel } from '../components/game/DeadPlayerInfoPanel';
 import { InfoModal } from '../components/ui/InfoModal';
+import { ConfirmationModal } from '../components/ui/ConfirmationModal';
+import { Notification } from '../components/ui/Notification';
 
 export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, myPlayer, user, maintenanceMode }) => {
     if (!room || !players || players.length === 0) {
@@ -19,6 +21,9 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     }
 
     const isAborted = room.status === 'aborted';
+    // 解散された場合、App.jsxで検知してホームに戻るはずだが、念のためここでもチェック
+    const isClosed = room.status === 'closed';
+
     const winner = room.winner;
     const isCitizenWin = winner === 'citizen';
     const isFoxWin = winner === 'fox';
@@ -37,6 +42,20 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     const [fullPlayers, setFullPlayers] = useState(players || []); 
     const [myTrueRole, setMyTrueRole] = useState(null);
     const [dataLoaded, setDataLoaded] = useState(false);
+    
+    // 試合IDの表示管理
+    const [showMatchId, setShowMatchId] = useState(true);
+    // モーダル管理
+    const [modalConfig, setModalConfig] = useState(null);
+    const [notification, setNotification] = useState(null);
+
+    // 部屋が解散されたらホームへ戻る
+    useEffect(() => {
+        if (isClosed) {
+            setView('home');
+            setRoomCode("");
+        }
+    }, [isClosed, setView, setRoomCode]);
 
     useEffect(() => {
         const fetchRoles = async () => {
@@ -48,13 +67,21 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     const mySecret = await getDoc(mySecretRef);
                     if(mySecret.exists()) setMyTrueRole(mySecret.data().role);
                 } catch(e) { console.error("Error fetching my secret:", e); }
+            } else if (myPlayer?.isSpectator) {
+                // 観戦者の場合は役職を「観戦者」とする
+                setMyTrueRole('spectator');
             }
 
             try {
                 const fn = httpsCallable(functions, 'getAllPlayerRoles');
                 const res = await fn({ roomCode: roomId });
                 if (res.data && res.data.players) {
-                    setFullPlayers(res.data.players);
+                    // 観戦者情報を補正してセット
+                    const processedPlayers = res.data.players.map(p => {
+                        if (p.isSpectator) return { ...p, role: 'spectator' };
+                        return p;
+                    });
+                    setFullPlayers(processedPlayers);
                 } else {
                     setFullPlayers(players);
                 }
@@ -75,7 +102,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
 
         return fullPlayers.filter(p => {
             const role = p.role;
-            if (!role) return false;
+            if (!role || role === 'spectator') return false; // 観戦者は除外
 
             // 通常の勝利判定
             if (isFoxWin) { if(role === 'fox') return true; }
@@ -113,6 +140,51 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     }
 
+    // 表示テキスト決定ロジック
+    let mainTitle = "";
+    let titleGradient = "";
+    
+    if (isAborted) {
+        mainTitle = "NO CONTEST";
+        titleGradient = "from-gray-400 to-gray-600";
+    } else if (myPlayer?.isSpectator) {
+        // 観戦者の場合
+        if (isCitizenWin) { titleGradient = "from-yellow-400 to-orange-500"; }
+        else if (isFoxWin) { titleGradient = "from-orange-400 to-pink-500"; }
+        else { titleGradient = "from-red-500 to-purple-600"; }
+        mainTitle = "GAME SET"; // 指示通り観戦者はGAME SETに変更
+    } else {
+        // プレイヤーの場合
+        if (personalResult === 'win') {
+            mainTitle = "YOU WIN!!!";
+            titleGradient = "from-yellow-300 via-yellow-500 to-orange-500";
+        } else if (personalResult === 'lose') {
+            mainTitle = "YOU LOSE…";
+            titleGradient = "from-gray-400 to-slate-500";
+        } else {
+            mainTitle = "DRAW";
+            titleGradient = "from-gray-400 to-gray-600";
+        }
+    }
+
+    let resultDescription = "";
+    if (isAborted) {
+        resultDescription = "ホストにより強制終了されました";
+    } else {
+        if (isTeruteruWin) {
+            // てるてる勝利時の特別テキスト
+            if (isCitizenWin) resultDescription = "市民陣営＋てるてる坊主の勝ち";
+            else if (isWerewolfWin) resultDescription = "人狼陣営＋てるてる坊主の勝ち";
+            else if (isFoxWin) resultDescription = "妖狐＋てるてる坊主の勝ち";
+            else resultDescription = "てるてる坊主の勝ち"; // 万が一の場合
+        } else {
+            // 通常時のテキスト
+            if (isCitizenWin) resultDescription = "市民陣営の勝利";
+            else if (isFoxWin) resultDescription = "妖狐の単独勝利";
+            else resultDescription = "人狼陣営の勝利";
+        }
+    }
+
     const handleReplay = async () => {
         if (maintenanceMode) {
             setView('home'); // メンテナンスモード画面（ホーム）へ強制遷移
@@ -123,20 +195,37 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
             const fn = httpsCallable(functions, 'resetToLobby');
             await fn({ roomCode: roomId });
         } catch(e) {
-            alert("エラーが発生しました: " + e.message);
+            setNotification({ message: "エラーが発生しました: " + e.message, type: "error" });
         }
     };
 
-    const handleCloseRoom = async () => {
+    const confirmCloseRoom = () => {
         if (maintenanceMode) {
-            setView('home'); // メンテナンスモード画面（ホーム）へ強制遷移
+            setView('home');
             return;
         }
         if(!isHost) return;
-        if(confirm("本当に部屋を解散しますか？")) {
-            try {
-                await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomId), { status: 'closed' });
-            } catch(e) { console.error(e); }
+        setModalConfig({
+            title: "部屋の解散",
+            message: "本当に部屋を解散しますか？\n全てのデータはリセットされ、参加者はホームに戻ります。",
+            isDanger: true,
+            onConfirm: async () => {
+                setModalConfig(null);
+                try {
+                    await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomId), { status: 'closed' });
+                } catch(e) { console.error(e); }
+            },
+            onCancel: () => setModalConfig(null)
+        });
+    };
+
+    const copyMatchId = () => {
+        navigator.clipboard.writeText(matchId);
+        // 簡易的なフィードバック
+        const el = document.getElementById("copy-feedback");
+        if(el) {
+            el.classList.remove("opacity-0");
+            setTimeout(() => el.classList.add("opacity-0"), 2000);
         }
     };
 
@@ -156,24 +245,29 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
 
     return (
         <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 p-6 overflow-y-auto z-[100]">
-            <div className="max-w-6xl w-full text-center space-y-8 animate-fade-in-up pb-20">
-                <div className="absolute top-4 right-4 text-gray-500 font-mono text-sm">MATCH ID: {matchId}</div>
-
+            {modalConfig && <ConfirmationModal {...modalConfig} />}
+            {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
+            
+            <div className="max-w-6xl w-full text-center space-y-8 animate-fade-in-up pb-20 pt-10">
+                
+                {/* 勝利アイコン表示エリア */}
                 {isAborted ? (
                     <div className="inline-block p-4 rounded-full bg-red-900/50 mb-4 animate-pulse"><AlertOctagon size={64} className="text-red-500"/></div>
                 ) : (
-                    <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-4">
+                    <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-4 relative">
                         {isCitizenWin ? <Sun size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={64} className="text-orange-500 animate-pulse"/> : <Moon size={64} className="text-red-500"/>}
+                        {isTeruteruWin && <Smile size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50 animate-bounce"/>}
                     </div>
                 )}
                 
-                <h1 className={`text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r ${isAborted ? "from-gray-400 to-gray-600" : isCitizenWin ? "from-yellow-400 to-orange-500" : isFoxWin ? "from-orange-400 to-pink-500" : "from-red-500 to-purple-600"}`}>
-                    {isAborted ? "NO CONTEST" : isCitizenWin ? "CITIZEN WIN" : isFoxWin ? "FOX WIN" : "WEREWOLF WIN"}
+                {/* メインタイトル */}
+                <h1 className={`text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r ${titleGradient} drop-shadow-2xl`}>
+                    {mainTitle}
                 </h1>
                 
+                {/* 詳細説明 */}
                 <div className="flex flex-col items-center justify-center gap-2">
-                    <p className="text-2xl text-white font-bold tracking-widest">{isAborted ? "ホストにより強制終了されました" : isCitizenWin ? "市民陣営の勝利" : isFoxWin ? "妖狐の単独勝利" : "人狼陣営の勝利"}</p>
-                    {isTeruteruWin && <p className="text-lg text-green-300 font-bold bg-green-900/30 px-4 py-1 rounded-full border border-green-500/30 animate-pulse">※ てるてる坊主も勝利条件を満たしました！</p>}
+                    <p className="text-2xl text-white font-bold tracking-widest">{resultDescription}</p>
                 </div>
                 
                 <style>{`
@@ -181,25 +275,38 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     @keyframes pulse-border { 0% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } 50% { border-color: rgba(253, 224, 71, 1); box-shadow: 0 0 40px rgba(234, 179, 8, 0.6); } 100% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } }
                 `}</style>
 
-                {!isAborted && personalResult && (
-                    <div className={`relative inline-flex flex-col items-center justify-center gap-3 px-6 py-4 rounded-xl transition-all duration-500 transform hover:scale-105 group overflow-hidden min-w-[160px] mx-auto ${personalResult === 'win' ? "text-white" : "text-gray-300 border border-gray-700 bg-gradient-to-br from-gray-900 to-gray-800 shadow-xl"}`} style={personalResult === 'win' ? { background: 'linear-gradient(135deg, #854d0e 0%, #ca8a04 25%, #facc15 50%, #ca8a04 75%, #854d0e 100%)', backgroundSize: '200% 200%', animation: 'shine-gold 4s ease infinite, pulse-border 2s infinite', borderWidth: '1px', borderStyle: 'solid' } : {}}>
-                        {personalResult === 'win' && (<><div className="absolute inset-0 bg-white/10 opacity-30 mix-blend-overlay"></div><div className="absolute inset-0 bg-gradient-to-t from-black/20 to-white/20 pointer-events-none"></div></>)}
-                        <div className="relative z-10 flex flex-col items-center gap-3 text-center">
-                            {personalResult === 'win' ? (
-                                <div className="bg-yellow-100/20 p-3 rounded-full backdrop-blur-sm shadow-inner border border-yellow-200/30"><Trophy size={36} className="text-yellow-100 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" /></div>
-                            ) : (
-                                <div className="bg-black/20 p-3 rounded-full backdrop-blur-sm shadow-inner border border-gray-600/30"><Frown size={36} className="text-gray-400 drop-shadow-md" /></div>
-                            )}
-                            <div className="flex flex-col items-center">
-                                <span className={`text-xs font-bold uppercase tracking-[0.2em] mb-2 leading-none ${personalResult==='win' ? "text-yellow-200" : "text-gray-500"}`}>RESULT</span>
-                                <span className={`text-xl md:text-2xl font-black tracking-wider leading-tight drop-shadow-lg whitespace-nowrap ${personalResult === 'win' ? "text-white" : "text-gray-400"}`}>
-                                    {personalResult === 'win' ? "あなたの陣営の勝利です！" : "あなたの陣営の敗北です..."}
-                                </span>
+                {/* 試合IDカード (画面右下に固定表示) */}
+                {showMatchId && (
+                    <div className="fixed bottom-4 right-4 z-[200] max-w-sm w-full animate-fade-in-up">
+                        <div className="bg-gray-900/90 border border-indigo-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(99,102,241,0.2)] backdrop-blur-md relative hover:border-indigo-500/50 transition">
+                            <button onClick={() => setShowMatchId(false)} className="absolute top-2 right-2 text-gray-500 hover:text-white transition"><X size={16}/></button>
+                            
+                            <div className="flex flex-col items-start gap-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="bg-indigo-600/20 p-1.5 rounded-lg"><Search size={14} className="text-indigo-400"/></div>
+                                    <span className="text-xs font-bold text-indigo-300">この試合の試合IDは以下の通りです</span>
+                                </div>
+
+                                <button 
+                                    onClick={copyMatchId}
+                                    className="w-full relative flex items-center justify-between bg-black/40 px-3 py-2 rounded-xl border border-white/10 hover:bg-black/60 hover:border-indigo-400/50 transition group"
+                                >
+                                    <span className="text-xl font-mono font-black text-white tracking-widest group-hover:text-indigo-200">{matchId}</span>
+                                    <div className="flex items-center gap-1 text-[10px] text-gray-500 group-hover:text-white transition">
+                                        <Copy size={12}/> COPY
+                                    </div>
+                                    <div id="copy-feedback" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow opacity-0 transition-opacity pointer-events-none whitespace-nowrap">Copied!</div>
+                                </button>
+
+                                <p className="text-xs md:text-sm text-gray-500 leading-tight mt-1">
+                                    ホーム画面で検索すると、詳細ログをいつでも確認できます。
+                                </p>
                             </div>
                         </div>
                     </div>
                 )}
 
+                {/* 勝利プレイヤー一覧 */}
                 {!isAborted && (
                     <div className="flex flex-col items-center mt-8 w-full">
                           <p className="text-gray-400 text-sm mb-4 uppercase tracking-widest font-bold flex items-center gap-2"><Trophy size={16} className="text-yellow-500"/> WINNERS</p>
@@ -227,13 +334,14 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     </div>
                 )}
 
+                {/* アクションボタン */}
                 <div className="pt-8 flex flex-col items-center gap-4 w-full max-w-md mx-auto">
                       <button onClick={() => setShowDetail(true)} className="w-full px-8 py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2"><FileText size={20}/> 詳細ログを確認</button>
                       {isHost ? (
                           <>
                               <div className="w-full h-px bg-gray-800 my-2"></div>
                               <button onClick={handleReplay} className="w-full px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-full hover:scale-105 transition shadow-lg flex items-center justify-center gap-2"><RefreshCw size={20}/> 同じ部屋・設定で再度プレイ</button>
-                              <button onClick={handleCloseRoom} className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2"><LogOut size={18}/> 部屋を解散する</button>
+                              <button onClick={confirmCloseRoom} className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2"><LogOut size={18}/> 部屋を解散する</button>
                           </>
                       ) : (
                           <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse"><Loader size={18} className="animate-spin"/><span>ホストの操作を待っています...</span></div>

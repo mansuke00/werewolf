@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, ArrowRight, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -17,6 +17,12 @@ export const LogViewerScreen = ({ setView }) => {
     const [matchList, setMatchList] = useState([]);
     const [showList, setShowList] = useState(false);
     const [error, setError] = useState("");
+
+    // 初期化時に今日の日付をセット
+    useEffect(() => {
+        const today = new Date().toISOString().split('T')[0];
+        setSearchDate(today);
+    }, []);
 
     const handleSearch = async (idToSearch) => {
         const mid = idToSearch || matchIdInput;
@@ -62,13 +68,19 @@ export const LogViewerScreen = ({ setView }) => {
             const fn = httpsCallable(functions, 'getAllPlayerRoles');
             const res = await fn({ roomCode: roomId });
             if (res.data && res.data.players) {
-                players = res.data.players;
+                // 観戦者の役職データ（spectator）を補完
+                players = res.data.players.map(p => {
+                    if (p.isSpectator) return { ...p, role: 'spectator' };
+                    return p;
+                });
             }
         } catch (funcError) {
             console.warn("Failed to fetch full player roles, falling back to public info:", funcError);
             const playersSnap = await getDocs(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomId, 'players'));
             playersSnap.forEach(d => {
-                players.push({ id: d.id, ...d.data() });
+                const p = { id: d.id, ...d.data() };
+                if (p.isSpectator) p.role = 'spectator'; // フォールバック時も補完
+                players.push(p);
             });
         }
 
@@ -126,6 +138,8 @@ export const LogViewerScreen = ({ setView }) => {
         } catch (e) {
             console.error(e);
             setError("検索中にエラーが発生しました（インデックス未作成の可能性があります）: " + e.message);
+        } finally {
+            setLoading(false); // ローディング終了処理を追加
         }
     };
 
@@ -140,7 +154,8 @@ export const LogViewerScreen = ({ setView }) => {
                 matchId: d.data().matchId,
                 createdAt: d.data().createdAt,
                 winner: d.data().winner,
-                status: d.data().status
+                status: d.data().status,
+                teruteruWon: d.data().teruteruWon // てるてる坊主勝利フラグを追加取得
             })).filter(d => d.matchId);
             
             setMatchList(list);
@@ -182,7 +197,7 @@ export const LogViewerScreen = ({ setView }) => {
                     <div className="flex flex-col items-center justify-center flex-1 py-10 animate-fade-in">
                         <div className="text-center mb-12">
                             <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 mb-4 tracking-tighter drop-shadow-2xl">
-                                GAME ARCHIVES
+                                MANSUKE WEREWOLF ARCHIVES
                             </h2>
                             <p className="text-gray-500 font-mono tracking-widest text-sm">MANSUKE WEREWOLF HISTORY</p>
                         </div>
@@ -253,7 +268,7 @@ export const LogViewerScreen = ({ setView }) => {
                             
                             <div className="text-center pt-4 border-t border-gray-800">
                                 <button onClick={handleFetchList} className="text-sm text-gray-500 hover:text-white transition flex items-center justify-center gap-2 mx-auto underline underline-offset-4 decoration-gray-700 hover:decoration-white">
-                                    <Trophy size={14}/> 全ての過去ログリストを表示
+                                    <Trophy size={14}/> 過去の試合をリスト表示する
                                 </button>
                             </div>
                         </div>
@@ -272,10 +287,15 @@ export const LogViewerScreen = ({ setView }) => {
                                                 <div className="font-mono text-2xl font-black text-white group-hover:text-blue-400 transition tracking-widest">{m.matchId}</div>
                                                 <div className="text-xs text-gray-500 flex items-center gap-1 mt-1 font-mono"><Clock size={12}/> {new Date(getMillis(m.createdAt)).toLocaleString()}</div>
                                             </div>
-                                            <div className="text-right">
+                                            <div className="text-right flex flex-col items-end">
                                                 <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">WINNER</div>
-                                                <div className={`font-black text-lg ${m.status === 'aborted' ? "text-gray-500" : m.winner === 'citizen' ? "text-green-400" : m.winner === 'werewolf' ? "text-red-400" : m.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
+                                                <div className={`font-black text-lg text-right ${m.status === 'aborted' ? "text-gray-500" : m.winner === 'citizen' ? "text-green-400" : m.winner === 'werewolf' ? "text-red-400" : m.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
                                                     {m.status === 'aborted' ? "強制終了" : m.winner === 'citizen' ? "市民陣営" : m.winner === 'werewolf' ? "人狼陣営" : m.winner === 'fox' ? "妖狐" : "---"}
+                                                    {m.teruteruWon && (
+                                                        <div className="text-sm text-green-300 mt-1 flex items-center justify-end gap-1">
+                                                            <span>+ てるてる坊主</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -302,9 +322,16 @@ export const LogViewerScreen = ({ setView }) => {
                                 ) : (
                                     <div className="flex flex-col items-center justify-center gap-2 bg-gray-800/50 py-4 rounded-xl border border-gray-700">
                                         <div className="text-xs text-gray-400 font-bold uppercase tracking-widest">WINNER</div>
-                                        <div className={`font-black text-2xl flex items-center gap-2 ${searchResult.room.winner === 'citizen' ? "text-green-400" : searchResult.room.winner === 'werewolf' ? "text-red-400" : searchResult.room.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
-                                            <Trophy size={24} className={searchResult.room.winner === 'citizen' ? "text-green-500" : searchResult.room.winner === 'werewolf' ? "text-red-500" : searchResult.room.winner === 'fox' ? "text-orange-500" : "text-gray-500"}/>
-                                            {searchResult.room.winner === 'citizen' ? "市民陣営" : searchResult.room.winner === 'werewolf' ? "人狼陣営" : searchResult.room.winner === 'fox' ? "妖狐" : "引き分け"}
+                                        <div className={`font-black text-2xl flex flex-col items-center gap-1 ${searchResult.room.winner === 'citizen' ? "text-green-400" : searchResult.room.winner === 'werewolf' ? "text-red-400" : searchResult.room.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
+                                            <div className="flex items-center gap-2">
+                                                <Trophy size={24} className={searchResult.room.winner === 'citizen' ? "text-green-500" : searchResult.room.winner === 'werewolf' ? "text-red-500" : searchResult.room.winner === 'fox' ? "text-orange-500" : "text-gray-500"}/>
+                                                <span>{searchResult.room.winner === 'citizen' ? "市民陣営" : searchResult.room.winner === 'werewolf' ? "人狼陣営" : searchResult.room.winner === 'fox' ? "妖狐" : "引き分け"}</span>
+                                            </div>
+                                            {searchResult.room.teruteruWon && (
+                                                <div className="text-lg text-green-300 flex items-center gap-1 mt-1 font-bold">
+                                                    <span>+ てるてる坊主</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
