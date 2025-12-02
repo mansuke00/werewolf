@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+match /databases/{database}/documents {
+
+// 便利な関数定義
+function isAuth() {
+  return request.auth != null;
+}
+function isOwner(userId) {
+  return isAuth() && request.auth.uid == userId;
+}
+// 指定したフィールドだけが変更されているかチェック
+function onlyUpdating(fields) {
+  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+}
+
+// ★追加: システム設定 (APIキーなど)
+// ここへのアクセス許可がないと、Gemini APIキーが取得できません。
+// 認証済みユーザーなら誰でも読み取り可能にし、書き込みは禁止します。
+match /system/settings {
+  allow read: if isAuth();
+  allow write: if false;
+}
+
+// メインの部屋データへのパス
+match /artifacts/mansuke-jinro/public/data/rooms/{roomId} {
+  
+  // 1. 部屋情報 (Room)
+  // 読み取り: ログインしていれば誰でもOK
+  allow get, list: if isAuth();
+  
+  // 作成: 誰でもOK（部屋作成機能のため）
+  allow create: if isAuth() 
+                && request.resource.data.hostId == request.auth.uid
+                && request.resource.data.status == 'waiting'; // 最初は必ず待機状態
+  
+  // 更新: ホストだけが、待機中(Lobby)のみ設定変更可能
+  // ※ホスト移行はサーバー関数(migrateHost)で行うため、クライアントからの更新は設定変更のみ想定
+  allow update: if isAuth() 
+                && resource.data.hostId == request.auth.uid
+                && resource.data.status == 'waiting';
+
+  // 削除: 誰もできない（サーバー側の定期クリーンアップに任せる）
+  allow delete: if false;
+
+
+  // 2. プレイヤー情報 (Players) - 公開情報
+  match /players/{playerId} {
+    // 読み取り: 誰でもOK
+    allow read: if isAuth();
+
+    // 作成（参加）: 本人のみOK、初期ステータスはaliveのみ許可
+    allow create: if isOwner(playerId)
+                  && request.resource.data.status == 'alive';
+
+    // 更新: 本人のみOK
+    // 準備完了状態の変更はサーバー関数経由なので、'lastSeen'と'name'のみ許可
+    allow update: if isOwner(playerId) 
+                  && onlyUpdating(['lastSeen', 'name']);
+                  
+    // 削除: ホストがキック機能などで使う場合許可、またはサーバーに任せる
+    allow delete: if isOwner(playerId) || get(/databases/$(database)/documents/artifacts/mansuke-jinro/public/data/rooms/$(roomId)).data.hostId == request.auth.uid;
+  }
+
+
+  // 3. 【最重要】秘密情報 (Secret) - 役職や結果
+  // ここに「role」や「actionResult」が入る
+  match /players/{playerId}/secret/{docId} {
+    // 読み取り: 「そのプレイヤー本人」だけが許可（他人は絶対に見れない）
+    allow read: if isOwner(playerId);
+    
+    // 書き込み: 全て禁止（サーバーのみが書き込める）
+    allow write: if false;
+  }
+
+
+  // 4. チャット (Chat / TeamChat / GraveChat)
+  match /chat/{msgId} {
+    allow read: if isAuth();
+    // 作成: 本人のIDで送る場合のみ許可
+    allow create: if isAuth() && request.resource.data.senderId == request.auth.uid;
+    // 更新・削除: 禁止
+    allow update, delete: if false;
+  }
+  
+  // チームチャットなども同様
+  match /teamChats/{msgId} {
+    allow read: if isAuth();
+    allow create: if isAuth() && request.resource.data.senderId == request.auth.uid;
+  }
+  match /graveChat/{msgId} {
+    allow read: if isAuth();
+    allow create: if isAuth() && request.resource.data.senderId == request.auth.uid;
+  }
+
+
+  // 5. 投票・夜のアクション (Votes / NightActions)
+  // サーバー関数経由のため、読み書き共に完全ブロック
+  match /votes/{voteId} {
+    allow read, write: if false;
+  }
+  match /nightActions/{actionId} {
+    allow read, write: if false;
+  }
+}
+
+
+}
+}

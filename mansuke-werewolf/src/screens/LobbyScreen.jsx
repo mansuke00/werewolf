@@ -8,7 +8,6 @@ import { ROLE_DEFINITIONS } from '../constants/gameData';
 import { RoleCounter } from '../components/game/RoleCounter';
 
 export const LobbyScreen = ({ user, room, roomCode, players, setNotification, setView, setRoomCode }) => {
-      // 部屋データがまだ同期されていない場合のロード画面
       if (!room) return (
         <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-gray-900 via-black to-black opacity-80"></div>
@@ -26,8 +25,6 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       const [inPersonMode, setInPersonMode] = useState(room.inPersonMode !== undefined ? room.inPersonMode : false);
       const [loading, setLoading] = useState(false);
 
-      // Firestoreのデータ変更をローカルステートに同期させる
-      // これによりホスト以外の画面でも設定変更がリアルタイムに反映される
       useEffect(() => {
           if (room) {
               setRoleSettings(room.roleSettings || {});
@@ -36,12 +33,15 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           }
       }, [room]);
 
+      // 観戦者を除いたプレイヤー数を計算（サーバーバリデーションと合わせる）
+      const validPlayers = useMemo(() => players.filter(p => !p.isSpectator), [players]);
+      const validPlayerCount = validPlayers.length;
+      
       const totalAssigned = Object.values(roleSettings).reduce((a,b) => a+b, 0);
 
-      // ゲーム開始前のバリデーション（人数不足、役職不備など）
       const validationError = useMemo(() => {
-          if (players.length < 4) return "開始には最低4人のプレイヤーが必要です";
-          if (totalAssigned !== players.length) return "配役の合計が人数と一致していません";
+          if (validPlayerCount < 4) return "開始には最低4人のプレイヤーが必要です";
+          if (totalAssigned !== validPlayerCount) return "配役の合計が人数と一致していません";
           
           let wolfCount = 0;
           let humanCount = 0;
@@ -54,9 +54,8 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           if (wolfCount >= humanCount) return "人狼が過半数を占めているため、開始できません";
           
           return null;
-      }, [players.length, totalAssigned, roleSettings]);
+      }, [validPlayerCount, totalAssigned, roleSettings]);
 
-      // ゲーム開始処理（Cloud Functions呼び出し）
       const handleStartGame = async () => { 
           if(validationError) return setNotification({ message: validationError, type: "error" });
           setLoading(true); 
@@ -85,7 +84,6 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           }
       };
 
-      // ホスト権限：荒らし対策などのためのキック機能
       const handleKickPlayer = async (playerId, playerName) => {
           if(confirm(`${playerName} さんを退出させますか？`)) {
               try {
@@ -97,7 +95,6 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           }
       };
 
-      // 設定変更ハンドラ：即時Firestore更新
       const handleUpdateSettings = (newSettings) => {
           setRoleSettings(newSettings);
           if (isHostUser) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { roleSettings: newSettings });
@@ -126,12 +123,11 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           <div className="min-h-screen bg-gray-950 text-gray-100 font-sans pb-20 relative overflow-hidden">
               <div className="fixed top-0 left-0 w-full h-full z-0 pointer-events-none"><div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[120px]"></div><div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-900/10 rounded-full blur-[120px]"></div></div>
               <div className="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
-                  {/* 左カラム：部屋情報・参加者リスト */}
                   <div className="lg:col-span-4 space-y-6">
                       <div className="bg-gray-900/60 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl border border-gray-700/50 relative overflow-hidden">
                           <p className="text-gray-400 text-xs font-bold tracking-widest mb-2 uppercase">Room Code</p>
                           <div className="flex items-center gap-4 mb-4"><span className="text-6xl font-black text-white tracking-widest cursor-pointer" onClick={() => navigator.clipboard.writeText(roomCode)}>{roomCode}</span></div>
-                          <span className={`px-4 py-2 rounded-xl text-xs font-bold border ${totalAssigned === players.length ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"}`}>参加者: {players.length} / 配役: {totalAssigned}</span>
+                          <span className={`px-4 py-2 rounded-xl text-xs font-bold border ${totalAssigned === validPlayerCount ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"}`}>参加者: {validPlayerCount} ({players.length - validPlayerCount}観戦) / 配役: {totalAssigned}</span>
                       </div>
                       <div className="bg-gray-900/60 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl border border-gray-700/50 h-[600px] flex flex-col">
                           <h3 className="text-xl font-bold mb-6 flex items-center gap-3 text-gray-200"><Users className="text-blue-400"/> 参加者一覧</h3>
@@ -141,6 +137,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                       <div className="flex items-center gap-3">
                                           <div className={`w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor] ${isPlayerOnline(p) ? "bg-green-500 text-green-500" : "bg-red-500 text-red-500"}`}></div>
                                           <span className={`font-bold ${isPlayerOnline(p) ? "text-gray-200" : "text-gray-500"}`}>{p.name}</span>
+                                          {p.isSpectator && <span className="text-[10px] bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded border border-purple-500/30">観戦</span>}
                                       </div>
                                       <div className="flex items-center gap-2">
                                           {room.hostId === p.id && <Crown size={14} className="text-yellow-500"/>}
@@ -160,7 +157,6 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                       </div>
                   </div>
                   
-                  {/* 右カラム：ゲーム設定 */}
                   <div className="lg:col-span-8 space-y-6">
                       <div className="flex justify-end">
                           {isHostUser ? (
@@ -184,7 +180,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                               <div>
                                 <h4 className="text-sm font-black text-blue-400 mb-4 uppercase tracking-wider">市民陣営</h4>
                                 <div className="space-y-4">
-                                    {['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder'].map(k => (
+                                    {['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder', 'assassin'].map(k => (
                                         <RoleCounter key={k} roleKey={k} label={ROLE_DEFINITIONS[k].name} count={roleSettings[k] || 0} onChange={(key, val) => handleUpdateSettings({...roleSettings, [key]: val})} isHost={isHostUser} />
                                     ))}
                                 </div>
@@ -198,7 +194,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                 </div>
                                 <h4 className="text-sm font-black text-yellow-400 mb-4 mt-8 uppercase tracking-wider">第三陣営</h4>
                                 <div className="space-y-4">
-                                    {['fox'].map(k => (
+                                    {['fox', 'teruteru'].map(k => (
                                         <RoleCounter key={k} roleKey={k} label={ROLE_DEFINITIONS[k].name} count={roleSettings[k] || 0} onChange={(key, val) => handleUpdateSettings({...roleSettings, [key]: val})} isHost={isHostUser} />
                                     ))}
                                 </div>
@@ -208,7 +204,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                       {isHostUser ? (
                           <div className="bg-gray-900/60 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl border border-gray-700/50 flex flex-col items-center justify-center text-center gap-6">
                               <p className={`font-bold ${!validationError ? "text-green-400" : "text-red-400"}`}>
-                                  配役合計: {totalAssigned} / 参加者: {players.length}
+                                  配役合計: {totalAssigned} / 参加者: {validPlayerCount}
                               </p>
                               {validationError && (
                                   <div className="flex items-center gap-2 text-red-400 bg-red-900/20 px-4 py-2 rounded-lg border border-red-500/30">

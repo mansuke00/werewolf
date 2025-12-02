@@ -1,4 +1,4 @@
-import { User, Eye, Ghost, Shield, Swords, Skull, Search, Moon, Sun } from 'lucide-react';
+import { User, Eye, Ghost, Shield, Swords, Skull, Search, Moon, Sun, Crosshair, Smile } from 'lucide-react';
 
 // APIキーはセキュリティリスクを避けるため、ここでは定義せずFirestoreの'system/settings'から取得する設計
 
@@ -26,7 +26,7 @@ export const OVERLAY_DURATION_LONG = 8000;
 export const ROLE_DEFINITIONS = {
   citizen: { name: "市民", team: "citizen", desc: "特殊能力はありません。推理と議論で人狼を探します。", icon: User },
   seer: { name: "占い師", team: "citizen", desc: "毎晩1人を占い、「人狼」か「人狼ではない」かを知ることができます。", icon: Eye },
-  medium: { name: "霊媒師", team: "citizen", desc: "昼に吊られた人が、「人狼だった」か「人狼ではなかった」かを知ることができます。", icon: Ghost },
+  medium: { name: "霊媒師", team: "citizen", desc: "昼に処刑された人が、「人狼だった」か「人狼ではなかった」かを知ることができます。", icon: Ghost },
   knight: { name: "騎士", team: "citizen", desc: "毎晩1人を人狼の襲撃から守ります。2夜連続同じ人を守る事はできません。", icon: Shield },
   trapper: { name: "罠師", team: "citizen", desc: "騎士の能力に加え、護衛した先が襲撃されると、襲撃してきた人狼を返り討ちにして死亡させます。", icon: Swords },
   sage: { name: "賢者", team: "citizen", desc: "毎晩1人を占い、その人の正確な役職名を知ることができます。", icon: Eye },
@@ -34,8 +34,10 @@ export const ROLE_DEFINITIONS = {
   detective: { name: "名探偵", team: "citizen", desc: "誰かが死亡した日の夜に、その死因や正体に関する情報を知ることができます。", icon: Search },
   cursed: { name: "呪われし者", team: "citizen", desc: "最初は市民ですが、人狼に襲撃されると死亡せず、人狼に覚醒します。", icon: User },
   elder: { name: "長老", team: "citizen", desc: "人狼の襲撃を1度だけ耐えることができます。", icon: User },
+  assassin: { name: "暗殺者", team: "citizen", desc: "夜に一度だけ、護衛をも貫通して1人を暗殺することができます。", icon: Crosshair },
   werewolf: { name: "人狼", team: "werewolf", desc: "夜に仲間と相談して市民1人を襲撃します。", icon: Moon },
   greatwolf: { name: "大狼", team: "werewolf", desc: "占われても「人狼でない」と判定される、強力な人狼です。", icon: Moon },
   madman: { name: "狂人", team: "werewolf", desc: "人狼の味方をする市民です。嘘をついて場を混乱させます。", icon: User },
   fox: { name: "妖狐", team: "third", desc: "人狼に襲撃されても死にませんが、占われると呪い殺されます。最後まで生き残れば単独勝利です。", icon: Sun },
+  teruteru: { name: "てるてる坊主", team: "third", desc: "昼の投票で処刑されると、最終的な勝利陣営に加え追加で勝利となります。", icon: Smile },
 };

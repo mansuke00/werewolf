@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../config/firebase.js'; 
-import { Check, Moon, Lock, Loader, XCircle, CheckCircle, Info, Shield, Eye, Skull, Search } from 'lucide-react';
+import { Check, Moon, Lock, Loader, XCircle, CheckCircle, Info, Shield, Eye, Skull, Search, Crosshair } from 'lucide-react';
 import { ROLE_DEFINITIONS } from '../../constants/gameData.js'; 
 
 export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, teammates, roomCode, roomData, lastActionResult, isDone }) => {
@@ -10,6 +10,9 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // データ整合性のための安全策
     const safePlayers = players || [];
 
+    // 暗殺者の使用済みチェック（Firestoreのsecret/roleDataに含まれる想定だが、簡易的にローカル判定またはサーバーレスポンスで処理）
+    // 本格的にはmyPlayerプロップスにsecret情報を含める必要があるが、ここではroomData経由かサーバーエラーで判断
+    
     // --- 受動的情報役職（名探偵・霊媒師） ---
     // アクション選択は無く、情報を見るだけの役職
     if (['detective', 'medium'].includes(myRole)) {
@@ -48,15 +51,17 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         );
     }
 
-    // --- 能動的アクション役職（人狼・占い師・騎士など） ---
+    // --- 能動的アクション役職（人狼・占い師・騎士・暗殺者など） ---
     const [selectedId, setSelectedId] = useState(null);
     const [confirmed, setConfirmed] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [waitingResult, setWaitingResult] = useState(false);
+    const [assassinUsedMsg, setAssassinUsedMsg] = useState(null);
 
-    // 人狼チームなどはチーム単位でキーを管理
+    // 人狼チーム、暗殺者チームなどはチーム単位でキーを管理
     let teamKey = myRole;
     if (['werewolf', 'greatwolf'].includes(myRole)) teamKey = 'werewolf_team';
+    if (myRole === 'assassin') teamKey = 'assassin'; // 暗殺者もチーム行動（複数人の場合）
     
     const pendingAction = roomData?.pendingActions?.[teamKey];
     const leaderId = roomData?.nightLeaders?.[teamKey];
@@ -80,6 +85,21 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     const hasResultWait = ['seer', 'sage'].includes(myRole);
     const isActionDone = isDone || roomData?.nightActions?.[myLeaderId] !== undefined || (isSolo && roomData?.nightActions?.[myPlayer.id] !== undefined);
 
+    // 暗殺者が既に使用済みかどうかチェック
+    useEffect(() => {
+        if (myRole === 'assassin') {
+            const checkAssassinUsage = async () => {
+                // サーバーから情報をとるのが確実だが、ここではroomDataに含まれるフラグを確認する実装例
+                // ※Functions側で `room.assassinUsed` を更新する想定
+                if (roomData?.assassinUsed) {
+                    setAssassinUsedMsg("暗殺者は一度のみ暗殺できます（使用済み）");
+                    onActionComplete(); // アクション不要にする
+                }
+            };
+            checkAssassinUsage();
+        }
+    }, [myRole, roomData, onActionComplete]);
+
     // ステータス同期
     useEffect(() => {
         if (!pendingAction) setConfirmed(false);
@@ -102,7 +122,13 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
 
     // チームリーダー：提案
     const handlePropose = async () => { 
-        if(!selectedId || isSubmitting) return; 
+        if((!selectedId && myRole !== 'assassin') || isSubmitting) return; // 暗殺者はスキップ可能なのでselectedIdなしでもOKな場合があるが、基本は選択
+        
+        // 暗殺者の「今夜は暗殺しない」処理
+        if (myRole === 'assassin' && selectedId === 'skip') {
+             // スキップ処理
+        } else if (!selectedId) return;
+
         setIsSubmitting(true);
         try {
             const fn = httpsCallable(functions, 'nightInteraction'); 
@@ -131,6 +157,8 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // ソロまたは最終決定
     const handleSubmitFinal = async () => { 
         if(isSubmitting) return;
+        if (!selectedId && myRole !== 'assassin') return;
+
         setIsSubmitting(true);
         
         if (hasResultWait) {
@@ -161,6 +189,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         if (['werewolf', 'greatwolf'].includes(myRole) && p.id === myPlayer.id) return false;
         if (['seer', 'sage'].includes(myRole) && p.id === myPlayer.id) return false;
         if (['knight', 'trapper'].includes(myRole) && myPlayer.lastTarget === p.id) return false; // 連続護衛不可
+        if (myRole === 'assassin' && p.id === myPlayer.id) return false;
         return true;
     });
 
@@ -180,6 +209,20 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         prompt = "どのプレイヤーを護衛しますか？";
         doneTitle = "護衛完了";
         doneIcon = Shield;
+    } else if (myRole === 'assassin') {
+        prompt = "誰を暗殺しますか？";
+        doneTitle = "暗殺設定完了";
+        doneIcon = Crosshair;
+    }
+
+    // 使用済みの場合の表示
+    if (assassinUsedMsg) {
+        return (
+            <div className="flex flex-col h-full p-4 animate-fade-in items-center justify-center text-center bg-gray-900/80 rounded-xl border border-gray-700">
+                <Crosshair size={48} className="text-gray-500 mb-4"/>
+                <h3 className="text-lg font-bold text-gray-400">{assassinUsedMsg}</h3>
+            </div>
+        );
     }
 
     const showResultScreen = confirmed || (isActionDone && (!hasResultWait || (lastActionResult && lastActionResult.length > 0)));
@@ -187,7 +230,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // 結果表示画面
     if (showResultScreen) {
         const actionData = roomData?.nightActions?.[myLeaderId] || roomData?.nightActions?.[myPlayer.id];
-        const targetName = actionData ? safePlayers.find(p => p.id === actionData.targetId)?.name : (selectedId ? safePlayers.find(p=>p.id===selectedId)?.name : "---");
+        const targetName = actionData ? (actionData.targetId === 'skip' ? "暗殺しない" : safePlayers.find(p => p.id === actionData.targetId)?.name) : (selectedId ? (selectedId==='skip'?"暗殺しない":safePlayers.find(p=>p.id===selectedId)?.name) : "---");
         const resultCards = lastActionResult || [];
         
         return (
@@ -203,6 +246,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                          <span className="text-yellow-400">{targetName}</span> を{
                             ['werewolf', 'greatwolf'].includes(myRole) ? "襲撃しました" :
                             ['seer', 'sage'].includes(myRole) ? "占いました" :
+                            myRole === 'assassin' ? (targetName === "暗殺しない" ? "選択しました" : "暗殺対象にしました") :
                             "護衛しました"
                          }
                      </p>
@@ -256,7 +300,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
 
         if (pendingAction && isLeader) {
-            const targetName = safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明";
+            const targetName = pendingAction.targetId === 'skip' ? "暗殺しない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/50">
                     <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
@@ -277,7 +321,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
 
         if (pendingAction && !isLeader) {
-            const targetName = safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明";
+            const targetName = pendingAction.targetId === 'skip' ? "暗殺しない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             const hasVoted = pendingAction.approvals?.includes(myPlayer.id);
             return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/50">
@@ -323,6 +367,19 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
             </div>
 
             <div className="grid grid-cols-2 gap-2 overflow-y-auto flex-1 custom-scrollbar min-h-0">
+                {myRole === 'assassin' && (
+                    <button 
+                        onClick={() => setSelectedId('skip')} 
+                        className={`py-3 px-2 rounded-xl border-2 transition text-center flex flex-col items-center justify-center relative col-span-2 ${
+                            selectedId === 'skip'
+                            ? "border-purple-500 bg-purple-900/40 text-white shadow-[0_0_15px_rgba(168,85,247,0.5)]" 
+                            : "border-gray-700 bg-gray-800/40 text-gray-400 hover:bg-gray-700/60"
+                        }`}
+                    >
+                        <span className="font-bold text-sm">今晩は暗殺しない</span>
+                    </button>
+                )}
+                
                 {targets.length === 0 ? (
                     <div className="col-span-2 text-center text-gray-500 py-10">
                         <p className="text-sm">選択可能な対象がいません</p>

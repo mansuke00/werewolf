@@ -3,7 +3,6 @@ import { Ghost, List, Grid } from 'lucide-react';
 import { ROLE_DEFINITIONS } from '../../constants/gameData';
 
 // 死者（観戦者）専用の全プレイヤー情報パネル
-// ネタバレを含むため生存者には表示しないこと
 export const DeadPlayerInfoPanel = ({ players, title = "全プレイヤー役職" }) => {
   const [filterType, setFilterType] = useState('name'); 
   
@@ -52,6 +51,14 @@ export const DeadPlayerInfoPanel = ({ players, title = "全プレイヤー役職
       return ROLE_DEFINITIONS[key]?.name || "不明";
   };
 
+  // ステータス表示のヘルパー（テキストなし）
+  const getStatusDot = (p) => {
+      if (p.status === 'alive') return 'bg-green-500';
+      if (p.status === 'vanished') return 'bg-purple-500';
+      if (p.status === 'disconnected') return 'bg-gray-500';
+      return 'bg-red-500';
+  };
+
   return (
     <div className="h-full bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-700/50 flex flex-col overflow-hidden">
       <div className="p-3 border-b border-gray-700/50 bg-gray-800/40 flex justify-between items-center shrink-0">
@@ -75,15 +82,20 @@ export const DeadPlayerInfoPanel = ({ players, title = "全プレイヤー役職
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar min-h-0">
         {filterType === 'name' ? (
           <div className="space-y-2">
-            {sortedPlayers.map(p => (
-                <div key={p.id} className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
-                    <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${p.status === 'alive' ? 'bg-green-500' : p.status === 'disconnected' ? 'bg-gray-500' : 'bg-red-500'}`}></div>
-                        <span className="font-bold text-gray-200">{p.name}</span>
+            {sortedPlayers.map(p => {
+                const dotColor = getStatusDot(p);
+                return (
+                    <div key={p.id} className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-2.5 h-2.5 rounded-full ${dotColor} shadow-[0_0_8px_currentColor]`}></div>
+                            <span className="font-bold text-gray-200">{p.name}</span>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-xs text-gray-400 font-bold">{getRoleDisplayName(p.role, p)}</div>
+                        </div>
                     </div>
-                    <span className="text-xs text-gray-400">{getRoleDisplayName(p.role, p)}</span>
-                </div>
-            ))}
+                );
+            })}
           </div>
         ) : (
           <div className="space-y-4">
@@ -93,12 +105,17 @@ export const DeadPlayerInfoPanel = ({ players, title = "全プレイヤー役職
                         {getGroupTitle(roleKey)}
                     </div>
                     <div className="p-2 space-y-1">
-                        {pList.map(p => (
-                            <div key={p.id} className="flex items-center justify-between px-2 py-1">
-                                <span className={`text-sm ${p.status === 'alive' ? 'text-gray-300' : 'text-red-400 line-through'}`}>{p.name}</span>
-                                <span className="text-[10px] text-gray-500">{p.status === 'alive' ? '生存' : p.status === 'disconnected' ? '回線落ち' : '死亡'}</span>
-                            </div>
-                        ))}
+                        {pList.map(p => {
+                            const dotColor = getStatusDot(p);
+                            return (
+                                <div key={p.id} className="flex items-center justify-between px-2 py-1">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full ${dotColor}`}></div>
+                                        <span className={`text-sm ${p.status === 'alive' ? 'text-gray-300' : 'text-red-400 line-through'}`}>{p.name}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             ))}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MessageSquare, Send, Users, Ghost, PenTool } from 'lucide-react';
+import { MessageSquare, Send, Users, Ghost, PenTool, Lock } from 'lucide-react';
 import { getMillis } from '../../utils/helpers';
 
-export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, title = "生存者チャット", isTeamChat = false, currentDay, currentPhase, disableFilter = false, readOnly = false }) => {
+export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, title = "生存者チャット", isTeamChat = false, currentDay, currentPhase, disableFilter = false, readOnly = false, disabled = false }) => {
   const [chatInput, setChatInput] = useState("");
   const scrollRef = useRef(null);
   
@@ -12,6 +12,10 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
   const handleSubmit = async (e) => {
       e.preventDefault();
       if(chatInput.trim()) { 
+          if (chatInput.length > 50) {
+              alert("メッセージは50文字以内で入力してください。");
+              return;
+          }
           try {
             await onSendMessage(chatInput); 
             setChatInput(""); 
@@ -26,7 +30,6 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
   const isGrave = title === "霊界チャット";
   
   // メッセージフィルタリングロジック
-  // 日付とフェーズ（昼/夜）で表示を切り替える
   const filteredMessages = useMemo(() => {
       if (disableFilter || isGrave) return safeMessages;
       
@@ -47,7 +50,7 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
       });
   }, [filteredMessages]);
   
-  // スタイル定義（チャットの種類によって色を変える）
+  // スタイル定義
   const containerClass = isGrave 
     ? "bg-indigo-950/40 border-indigo-500/30 rounded-[2rem]" 
     : "bg-gray-900/60 border-gray-700/50 rounded-2xl";
@@ -62,21 +65,31 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
       return isMe ? "bg-blue-600 text-white rounded-tr-none" : "bg-gray-700 text-gray-200 rounded-tl-none";
   };
 
-  let placeholderText = "メッセージ...";
+  let placeholderText = "メッセージ (50文字以内)...";
   let descriptionText = ""; 
 
   if(isGrave) {
-      placeholderText = "霊界へ...";
+      placeholderText = "霊界へ... (50文字以内)";
       descriptionText = "死んだ者同士で、試合の展開を見守りましょう！";
   }
   else if(isTeamChat) {
-      placeholderText = "仲間へ...";
+      placeholderText = "仲間へ... (50文字以内)";
       const roleName = title.replace("チャット", "");
       descriptionText = `${roleName}の方のみがアクセスできるチャットルームです。`;
   }
 
   const isTeammate = (id) => teammates && teammates.some(t => t.id === id);
   
+  if (disabled) {
+      return (
+          <div className={`flex flex-col h-full backdrop-blur-xl border overflow-hidden shadow-xl items-center justify-center text-center p-4 ${containerClass}`}>
+              <Lock size={48} className="text-gray-500 mb-4"/>
+              <h3 className="text-xl font-bold text-gray-400">チャット利用不可</h3>
+              <p className="text-sm text-gray-500 mt-2">対面モードが有効なため、<br/>このチャットは利用できません。</p>
+          </div>
+      );
+  }
+
   return (
       <div className={`flex flex-col h-full backdrop-blur-xl border overflow-hidden shadow-xl ${containerClass}`}>
           <div className={`p-3 border-b flex flex-col shrink-0 ${headerClass}`}>
@@ -111,6 +124,7 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
                   <input 
                       className="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                       placeholder={placeholderText}
+                      maxLength={50}
                       value={chatInput} onChange={e => setChatInput(e.target.value)}
                   />
                   <button type="submit" className="bg-blue-600 px-4 rounded-xl text-white hover:bg-blue-500 disabled:opacity-50"><Send size={18}/></button>

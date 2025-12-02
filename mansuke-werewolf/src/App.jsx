@@ -8,6 +8,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { GameScreen } from './screens/GameScreen';
 import { ResultScreen } from './screens/ResultScreen';
+import { LogViewerScreen } from './screens/LogViewerScreen';
 import { Notification } from './components/ui/Notification';
 
 export default function App() {
@@ -18,16 +19,32 @@ export default function App() {
   const [myPlayer, setMyPlayer] = useState(null);
   const [view, setView] = useState("home"); 
   const [notification, setNotification] = useState(null);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
 
   // 匿名認証の初期化
-  // これが完了しないとFirestoreに書き込めない
   useEffect(() => { 
       const ia = async ()=>{ try{ await signInAnonymously(auth); }catch(e){} }; ia(); 
       return onAuthStateChanged(auth, u=>setUser(u)); 
   }, []);
 
-  // ハートビート処理（最終アクセス時刻の更新）
-  // これを使ってオフライン判定や幽霊データの掃除を行う
+  // メンテナンスモードの監視
+  useEffect(() => {
+      const unsub = onSnapshot(doc(db, 'system', 'settings'), (snap) => {
+          if (snap.exists()) {
+              const isMaintenance = snap.data().maintenanceMode === true;
+              setMaintenanceMode(isMaintenance);
+              // ロビーにいる時にメンテナンスが始まったらホーム（メンテナンス画面）へ強制遷移
+              if (isMaintenance && view === 'lobby') {
+                  setView('home');
+                  setRoomCode("");
+                  setNotification({ message: "メンテナンスが開始されました", type: "warning" });
+              }
+          }
+      });
+      return () => unsub();
+  }, [view]);
+
+  // ハートビート処理
   useEffect(() => { 
       if (!roomCode || !user) return; 
       const i = setInterval(() => { 
@@ -38,29 +55,24 @@ export default function App() {
 
   // ルーム情報の監視と画面遷移制御
   useEffect(() => {
-    if (!roomCode || !user || view === 'home') return;
+    if (!roomCode || !user || view === 'home' || view === 'logs') return; 
     
-    // ルーム自体のメタデータ監視
     const unsubRoom = onSnapshot(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), (snap) => {
       if (snap.exists()) {
         const d = snap.data();
-        // IDを含めて状態に保存（結果画面などで使うため）
         setRoom({ ...d, id: snap.id });
         
-        // ステータスに応じた画面切り替え
         if (d.status === 'playing') setView('game'); 
         else if (d.status === 'finished' || d.status === 'aborted') setView('result'); 
         else if (d.status === 'closed') { setNotification({message:"解散されました", type:"error"}); setView('home'); setRoomCode(""); } 
         else setView('lobby');
       } else {
-        // 部屋ドキュメントが存在しない場合（削除されたなど）もホームへ戻す
         setNotification({message:"部屋が見つかりません", type:"error"});
         setView('home');
         setRoomCode("");
       }
     });
 
-    // プレイヤーリストの監視
     const unsubPlayers = onSnapshot(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players'), (snap) => { 
         const p = snap.docs.map(d=>({id:d.id, ...d.data()})); 
         setPlayers(p); 
@@ -73,7 +85,7 @@ export default function App() {
     return () => { unsubRoom(); unsubPlayers(); };
   }, [roomCode, user, view]); 
 
-  // ホストによるキック（強制退出）の検知ロジック
+  // キック検知
   useEffect(() => {
     if (view === 'lobby' && room && user && players.length > 0) {
         const amIInList = players.find(p => p.id === user.uid);
@@ -85,7 +97,6 @@ export default function App() {
     }
   }, [players, view, room, user]);
 
-  // 認証中のローディング画面
   if (!user) return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center text-white relative overflow-hidden">
         <div className="absolute inset-0 z-0">
@@ -117,7 +128,12 @@ export default function App() {
                 setView={setView} 
                 setNotification={setNotification} 
                 setMyPlayer={setMyPlayer}
+                maintenanceMode={maintenanceMode}
             />
+        )}
+
+        {view === 'logs' && (
+            <LogViewerScreen setView={setView} />
         )}
         
         {view === 'lobby' && (
@@ -151,7 +167,8 @@ export default function App() {
                 setRoomCode={setRoomCode}
                 roomCode={roomCode}
                 myPlayer={myPlayer} 
-                user={user}         
+                user={user}
+                maintenanceMode={maintenanceMode}
             />
         )}
     </>

@@ -1,19 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Gavel, User, AlertOctagon } from 'lucide-react';
 
 // 投票結果と処刑結果を表示するモーダル
 export const VotingResultModal = ({ voteSummary, players, anonymousVoting, executionResult, onClose }) => {
-    // 表示時間：短めに設定してテンポを良くする
-    const [timeLeft, setTimeLeft] = useState(6);
+    // 表示時間：短めに設定してテンポを良くする (10s -> 5s)
+    // useRefを使ってレンダリングの影響を受けないタイマーを実装
+    const [timeLeft, setTimeLeft] = useState(5);
+    const timerRef = useRef(5);
 
     useEffect(() => {
-        if (timeLeft > 0) {
-            const t = setTimeout(() => setTimeLeft(c => c - 1), 1000);
-            return () => clearTimeout(t);
-        } else {
-            onClose();
-        }
-    }, [timeLeft, onClose]);
+        const interval = setInterval(() => {
+            timerRef.current -= 1;
+            setTimeLeft(timerRef.current);
+            
+            if (timerRef.current <= 0) {
+                clearInterval(interval);
+                onClose();
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [onClose]);
 
     const getPlayerName = (id) => {
         if (id === 'skip') return 'スキップ';
