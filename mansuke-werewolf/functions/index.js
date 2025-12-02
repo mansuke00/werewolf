@@ -23,7 +23,7 @@ const TIME_LIMITS = {
 const ROLE_NAMES = {
   citizen: "市民", seer: "占い師", medium: "霊媒師", knight: "騎士",
   trapper: "罠師", sage: "賢者", killer: "人狼キラー", detective: "名探偵",
-  cursed: "呪われし者", elder: "長老", assassin: "暗殺者",
+  cursed: "呪われし者", elder: "長老", assassin: "ももすけ",
   werewolf: "人狼", greatwolf: "大狼", madman: "狂人", 
   fox: "妖狐", teruteru: "てるてる坊主"
 };
@@ -99,7 +99,7 @@ const getTeamMemberIds = (players, role) => {
     if (['werewolf', 'greatwolf'].includes(role)) {
         return players.filter(p => ['werewolf', 'greatwolf', 'madman'].includes(p.role)).map(p => p.id);
     }
-    // 暗殺者、てるてる坊主などは同じ役職同士でチャット可能
+    // ももすけ（暗殺者）、てるてる坊主などは同じ役職同士でチャット可能
     if (['assassin', 'teruteru'].includes(role)) {
         return players.filter(p => p.role === role).map(p => p.id);
     }
@@ -298,17 +298,17 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
           
           if (!assassinFailed) {
               dead.push(assassinTargetId);
-              addDeathReason(assassinTargetId, "暗殺"); // 死因変更: 暗殺者による暗殺 -> 暗殺
+              addDeathReason(assassinTargetId, "存在意義抹消"); // 死因変更: 暗殺者による暗殺 -> 存在意義抹消
               const assassinTeam = getTeamMemberIds(players, 'assassin');
               const tgtName = players.find(p=>p.id===assassinTargetId)?.name;
-              // ログ廃止: logsSec.push({ text: `暗殺者チームは${tgtName}を暗殺しました。`, visibleTo: assassinTeam, secret: true });
+              // ログ廃止: logsSec.push({ text: `ももすけチームは${tgtName}の存在意義を抹消しました。`, visibleTo: assassinTeam, secret: true });
               if (guards.includes(assassinTargetId)) {
-                  logs.push({ text: `${tgtName}は護衛されていましたが、暗殺者の能力により貫通して殺されました。`, visibleTo: [], secret: true, phase: "霊界ログ" });
+                  logs.push({ text: `${tgtName}は護衛されていましたが、ももすけの能力により存在意義が消されてしまいました。`, visibleTo: [], secret: true, phase: "霊界ログ" });
               }
               updates.assassinUsed = true;
           } else {
               const assassinTeam = getTeamMemberIds(players, 'assassin');
-              logsSec.push({ text: `暗殺者は襲撃されたため、暗殺に失敗しました。`, visibleTo: assassinTeam, secret: true });
+              logsSec.push({ text: `ももすけは襲撃されたため、存在意義の抹消に失敗しました。`, visibleTo: assassinTeam, secret: true });
           }
       }
 
@@ -674,7 +674,7 @@ exports.kickPlayer = onCall(async (request) => {
         const playerDocs = [];
         
         for (const docSnap of allPlayersSnap.docs) {
-            const p = { id: docSnap.id, ...docSnap.data() };
+            const p = { id: d.id, ...d.data() };
             // キック対象のステータスはメモリ上で更新しておく
             if (p.id === playerId) p.status = 'vanished';
             
@@ -740,7 +740,7 @@ exports.submitNightAction = onCall(async (request) => {
     const room = rSnap.data();
 
     if (role === 'assassin' && room.assassinUsed) {
-        throw new HttpsError('failed-precondition', '暗殺能力は既に使用済みです');
+        throw new HttpsError('failed-precondition', 'ももすけの能力は既に使用済みです');
     }
 
     let targetDoc = null, targetSecret = null;
@@ -777,9 +777,9 @@ exports.submitNightAction = onCall(async (request) => {
         newLogs.push({ text: `罠師チームは${targetName}を護衛しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: teamIds });
     } else if (role === 'assassin') {
         if (targetId !== 'skip') {
-            newLogs.push({ text: `暗殺者チームは${targetName}を暗殺対象にしました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: teamIds });
+            newLogs.push({ text: `ももすけチームは${targetName}を存在意義抹消対象にしました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: teamIds });
         } else {
-            newLogs.push({ text: `暗殺者チームは今夜は能力を使用しませんでした。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: teamIds });
+            newLogs.push({ text: `ももすけチームは今夜は誰の存在意義も消しませんでした。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: teamIds });
         }
     }
 
@@ -881,8 +881,8 @@ exports.nightInteraction = onCall(async (request) => {
               else if (myRole === 'knight') actionMsg = `騎士チームは${targetName}を護衛しました。`;
               else if (myRole === 'trapper') actionMsg = `罠師チームは${targetName}を護衛しました。`;
               else if (myRole === 'assassin') {
-                  if (targetId !== 'skip') actionMsg = `暗殺者チームは${targetName}を暗殺対象にしました。`;
-                  else actionMsg = `暗殺者チームは今夜は能力を使用しませんでした。`;
+                  if (targetId !== 'skip') actionMsg = `ももすけチームは${targetName}を存在意義抹消対象にしました。`;
+                  else actionMsg = `ももすけチームは今夜は誰の存在意義も消しませんでした。`;
               }
               
               if (actionMsg) {

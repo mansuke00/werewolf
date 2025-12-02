@@ -51,17 +51,17 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         );
     }
 
-    // --- 能動的アクション役職（人狼・占い師・騎士・暗殺者など） ---
+    // --- 能動的アクション役職（人狼・占い師・騎士・ももすけなど） ---
     const [selectedId, setSelectedId] = useState(null);
     const [confirmed, setConfirmed] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [waitingResult, setWaitingResult] = useState(false);
     const [assassinUsedMsg, setAssassinUsedMsg] = useState(null);
 
-    // 人狼チーム、暗殺者チームなどはチーム単位でキーを管理
+    // 人狼チーム、ももすけチームなどはチーム単位でキーを管理
     let teamKey = myRole;
     if (['werewolf', 'greatwolf'].includes(myRole)) teamKey = 'werewolf_team';
-    if (myRole === 'assassin') teamKey = 'assassin'; // 暗殺者もチーム行動（複数人の場合）
+    if (myRole === 'assassin') teamKey = 'assassin'; // ももすけもチーム行動（複数人の場合）
     
     const pendingAction = roomData?.pendingActions?.[teamKey];
     const leaderId = roomData?.nightLeaders?.[teamKey];
@@ -85,14 +85,14 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     const hasResultWait = ['seer', 'sage'].includes(myRole);
     const isActionDone = isDone || roomData?.nightActions?.[myLeaderId] !== undefined || (isSolo && roomData?.nightActions?.[myPlayer.id] !== undefined);
 
-    // 暗殺者が既に使用済みかどうかチェック
+    // ももすけが既に使用済みかどうかチェック
     useEffect(() => {
         if (myRole === 'assassin') {
             const checkAssassinUsage = async () => {
                 // サーバーから情報をとるのが確実だが、ここではroomDataに含まれるフラグを確認する実装例
                 // ※Functions側で `room.assassinUsed` を更新する想定
                 if (roomData?.assassinUsed) {
-                    setAssassinUsedMsg("暗殺者は一度のみ暗殺できます（使用済み）");
+                    setAssassinUsedMsg("ももすけは一名のみ存在意義を消すことができます");
                     onActionComplete(); // アクション不要にする
                 }
             };
@@ -122,9 +122,9 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
 
     // チームリーダー：提案
     const handlePropose = async () => { 
-        if((!selectedId && myRole !== 'assassin') || isSubmitting) return; // 暗殺者はスキップ可能なのでselectedIdなしでもOKな場合があるが、基本は選択
+        if((!selectedId && myRole !== 'assassin') || isSubmitting) return; // ももすけはスキップ可能なのでselectedIdなしでもOKな場合があるが、基本は選択
         
-        // 暗殺者の「今夜は暗殺しない」処理
+        // ももすけの「今夜は誰の存在意義も消さない」処理
         if (myRole === 'assassin' && selectedId === 'skip') {
              // スキップ処理
         } else if (!selectedId) return;
@@ -210,8 +210,8 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         doneTitle = "護衛完了";
         doneIcon = Shield;
     } else if (myRole === 'assassin') {
-        prompt = "誰を暗殺しますか？";
-        doneTitle = "暗殺設定完了";
+        prompt = "どのプレイヤーの存在意義を抹消しますか？";
+        doneTitle = "存在意義抹消設定完了";
         doneIcon = Crosshair;
     }
 
@@ -230,7 +230,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // 結果表示画面
     if (showResultScreen) {
         const actionData = roomData?.nightActions?.[myLeaderId] || roomData?.nightActions?.[myPlayer.id];
-        const targetName = actionData ? (actionData.targetId === 'skip' ? "暗殺しない" : safePlayers.find(p => p.id === actionData.targetId)?.name) : (selectedId ? (selectedId==='skip'?"暗殺しない":safePlayers.find(p=>p.id===selectedId)?.name) : "---");
+        const targetName = actionData ? (actionData.targetId === 'skip' ? "今晩は誰の存在意義も消さない" : safePlayers.find(p => p.id === actionData.targetId)?.name) : (selectedId ? (selectedId==='skip'?"今晩は誰の存在意義も消さない":safePlayers.find(p=>p.id===selectedId)?.name) : "---");
         const resultCards = lastActionResult || [];
         
         return (
@@ -246,7 +246,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                          <span className="text-yellow-400">{targetName}</span> を{
                             ['werewolf', 'greatwolf'].includes(myRole) ? "襲撃しました" :
                             ['seer', 'sage'].includes(myRole) ? "占いました" :
-                            myRole === 'assassin' ? (targetName === "暗殺しない" ? "選択しました" : "暗殺対象にしました") :
+                            myRole === 'assassin' ? (targetName === "今晩は誰の存在意義も消さない" ? "選択しました" : "存在意義を抹消する対象にしました") :
                             "護衛しました"
                          }
                      </p>
@@ -300,7 +300,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
 
         if (pendingAction && isLeader) {
-            const targetName = pendingAction.targetId === 'skip' ? "暗殺しない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
+            const targetName = pendingAction.targetId === 'skip' ? "今晩は誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/50">
                     <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
@@ -321,7 +321,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
 
         if (pendingAction && !isLeader) {
-            const targetName = pendingAction.targetId === 'skip' ? "暗殺しない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
+            const targetName = pendingAction.targetId === 'skip' ? "今晩は誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             const hasVoted = pendingAction.approvals?.includes(myPlayer.id);
             return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/50">
@@ -376,7 +376,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                             : "border-gray-700 bg-gray-800/40 text-gray-400 hover:bg-gray-700/60"
                         }`}
                     >
-                        <span className="font-bold text-sm">今晩は暗殺しない</span>
+                        <span className="font-bold text-sm">今晩は誰の存在意義も消さない</span>
                     </button>
                 )}
                 
