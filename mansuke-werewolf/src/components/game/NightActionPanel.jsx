@@ -124,7 +124,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     const handlePropose = async () => { 
         if((!selectedId && myRole !== 'assassin') || isSubmitting) return; // ももすけはスキップ可能なのでselectedIdなしでもOKな場合があるが、基本は選択
         
-        // ももすけの「今夜は誰の存在意義も消さない」処理
+        // ももすけの「誰の存在意義も消さない」処理
         if (myRole === 'assassin' && selectedId === 'skip') {
              // スキップ処理
         } else if (!selectedId) return;
@@ -230,7 +230,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // 結果表示画面
     if (showResultScreen) {
         const actionData = roomData?.nightActions?.[myLeaderId] || roomData?.nightActions?.[myPlayer.id];
-        const targetName = actionData ? (actionData.targetId === 'skip' ? "今晩は誰の存在意義も消さない" : safePlayers.find(p => p.id === actionData.targetId)?.name) : (selectedId ? (selectedId==='skip'?"今晩は誰の存在意義も消さない":safePlayers.find(p=>p.id===selectedId)?.name) : "---");
+        const targetName = actionData ? (actionData.targetId === 'skip' ? "誰の存在意義も消さない" : safePlayers.find(p => p.id === actionData.targetId)?.name) : (selectedId ? (selectedId==='skip'?"誰の存在意義も消さない":safePlayers.find(p=>p.id===selectedId)?.name) : "---");
         const resultCards = lastActionResult || [];
         
         return (
@@ -246,7 +246,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                          <span className="text-yellow-400">{targetName}</span> を{
                             ['werewolf', 'greatwolf'].includes(myRole) ? "襲撃しました" :
                             ['seer', 'sage'].includes(myRole) ? "占いました" :
-                            myRole === 'assassin' ? (targetName === "今晩は誰の存在意義も消さない" ? "選択しました" : "存在意義を抹消する対象にしました") :
+                            myRole === 'assassin' ? (targetName === "誰の存在意義も消さない" ? "選択しました" : "存在意義を抹消する対象にしました") :
                             "護衛しました"
                          }
                      </p>
@@ -300,7 +300,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
 
         if (pendingAction && isLeader) {
-            const targetName = pendingAction.targetId === 'skip' ? "今晩は誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
+            const targetName = pendingAction.targetId === 'skip' ? "誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/50">
                     <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
@@ -321,7 +321,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
 
         if (pendingAction && !isLeader) {
-            const targetName = pendingAction.targetId === 'skip' ? "今晩は誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
+            const targetName = pendingAction.targetId === 'skip' ? "誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             const hasVoted = pendingAction.approvals?.includes(myPlayer.id);
             return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/50">
@@ -354,6 +354,11 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                 <h3 className="text-lg font-bold text-white flex items-center justify-center gap-2 mb-1">
                     <Moon className="text-purple-400" size={20}/> {prompt}
                 </h3>
+                {myRole === 'assassin' && (
+                    <p className="text-xs text-red-300 bg-red-900/20 px-2 py-1 rounded border border-red-500/30 mb-2">
+                        ももすけは1ゲームにつき1人しか存在意義を抹消することができません。注意して能力を活用してください
+                    </p>
+                )}
                 {needsConsensus && (
                     <p className="text-xs text-yellow-300 bg-yellow-900/30 px-2 py-1 rounded border border-yellow-500/30">
                         役職チャットで誰を選択するかを話し合い、チームを代表して選択してください。
@@ -376,7 +381,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                             : "border-gray-700 bg-gray-800/40 text-gray-400 hover:bg-gray-700/60"
                         }`}
                     >
-                        <span className="font-bold text-sm">今晩は誰の存在意義も消さない</span>
+                        <span className="font-bold text-sm">誰の存在意義も消さない</span>
                     </button>
                 )}
                 
