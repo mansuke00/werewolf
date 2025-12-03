@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc } from 'lucide-react';
+import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc, Hash, Filter, RefreshCw, Trash2 } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy, Timestamp, collectionGroup, getDoc, doc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../config/firebase';
-import { getMillis } from '../utils/helpers';
-import { LogPanel } from '../components/game/LogPanel';
-import { DeadPlayerInfoPanel } from '../components/game/DeadPlayerInfoPanel';
+import { db, functions } from '../config/firebase.js';
+import { getMillis } from '../utils/helpers.js';
+import { LogPanel } from '../components/game/LogPanel.jsx';
+import { DeadPlayerInfoPanel } from '../components/game/DeadPlayerInfoPanel.jsx';
 
 export const LogViewerScreen = ({ setView }) => {
     // 検索条件
@@ -28,6 +28,14 @@ export const LogViewerScreen = ({ setView }) => {
         // 初期表示でリストを読み込む
         handleSearchButton(today); 
     }, []);
+
+    const handleClearAll = () => {
+        setMatchIdInput("");
+        setSearchDate("");
+        setSearchTime("");
+        setSearchName("");
+        setError("");
+    };
 
     // 統合検索ボタンのハンドラ（AND検索に対応）
     const handleSearchButton = async (initialDate = null) => {
@@ -112,6 +120,18 @@ export const LogViewerScreen = ({ setView }) => {
                 } else if (hasDateSearch) {
                     // 日付検索のみ
                     finalResults = dateResults;
+                } else {
+                    // 条件なしの場合は直近のデータを取得（負荷対策のため制限付き）
+                    const recentQuery = query(
+                        collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'), 
+                        orderBy('createdAt', 'desc'),
+                        // limit(20) // 必要に応じて制限
+                    );
+                    // ここでは実装を省略し、日付指定を促すエラーにするか、全件検索を許容するか判断が必要
+                    // 今回はリストを空にしてエラーメッセージを表示
+                    setError("検索条件を指定してください（日時またはプレイヤー名）");
+                    setLoading(false);
+                    return;
                 }
 
                 // ソート
@@ -147,26 +167,36 @@ export const LogViewerScreen = ({ setView }) => {
         const roomData = roomDoc.data();
         const roomId = roomDoc.id;
 
-        let players = [];
+        let finalPlayers = [];
+        
         try {
+            // Cloud Functions経由で役職を含む全プレイヤー情報を取得
             const fn = httpsCallable(functions, 'getAllPlayerRoles');
             const res = await fn({ roomCode: roomId });
+            
             if (res.data && res.data.players) {
-                players = res.data.players.map(p => {
+                finalPlayers = res.data.players.map(p => {
                     if (p.isSpectator) return { ...p, role: 'spectator' };
+                    if (!p.role) return { ...p, role: 'unknown' };
                     return p;
                 });
             } else {
-                throw new Error("No player data in response");
+                throw new Error("Functions returned empty player data");
             }
         } catch (funcError) {
-            console.warn("getAllPlayerRoles failed, falling back:", funcError);
+            console.warn("getAllPlayerRoles failed, falling back to public info:", funcError);
+            
             const playersSnap = await getDocs(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomId, 'players'));
-            playersSnap.forEach(d => {
+            finalPlayers = playersSnap.docs.map(d => {
                 const p = { id: d.id, ...d.data() };
-                if (p.isSpectator) p.role = 'spectator';
-                players.push(p);
+                if (p.isSpectator) {
+                    p.role = 'spectator';
+                } else {
+                    p.role = 'unknown'; 
+                }
+                return p;
             });
+            setError("役職情報の取得に失敗しました。一部情報が制限されます。");
         }
 
         const chatSnap = await getDocs(query(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomId, 'chat'), orderBy('createdAt', 'asc')));
@@ -174,7 +204,7 @@ export const LogViewerScreen = ({ setView }) => {
 
         setSearchResult({
             room: { ...roomData, id: roomId },
-            players: players,
+            players: finalPlayers,
             chatMessages: chatMessages
         });
         setShowDetail(true);
@@ -207,7 +237,6 @@ export const LogViewerScreen = ({ setView }) => {
         timeOptions.push(<option key={i} value={i}>{`${i}:00 - ${i+1}:00`}</option>);
     }
 
-    // 詳細画面のステータス表示用
     const getStatusDisplay = (room) => {
         if (room.status === 'aborted') {
              return (
@@ -258,98 +287,126 @@ export const LogViewerScreen = ({ setView }) => {
             <div className="flex-1 flex overflow-hidden z-10 px-4 pb-4 gap-4">
                 
                 {!showDetail ? (
-                    // === リスト表示モード (3:7分割) ===
+                    // === リスト表示モード ===
                     <>
-                        {/* 左側: 検索パネル (30%) */}
+                        {/* 左側: 検索パネル */}
                         <div className="w-[30%] min-w-[300px] max-w-sm flex flex-col gap-4 bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl p-6 relative shrink-0">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-50"></div>
                             
-                            <div className="mb-4">
+                            <div className="mb-2">
                                 <h3 className="text-xl font-black text-white flex items-center gap-2 mb-1"><Search size={24} className="text-blue-400"/> SEARCH</h3>
                                 <p className="text-xs text-gray-500">条件を指定して過去ログを検索</p>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
-                                {/* ID検索 */}
-                                <div className="space-y-2">
-                                    <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><Trophy size={12}/> 試合ID</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="例: aBc123" 
-                                        className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition font-mono tracking-wider placeholder-gray-700"
-                                        value={matchIdInput}
-                                        onChange={(e) => setMatchIdInput(e.target.value)}
-                                    />
-                                </div>
-
-                                <div className="flex items-center gap-4 opacity-30">
-                                    <div className="h-px bg-gray-500 flex-1"></div>
-                                    <span className="text-[10px] text-gray-400 font-bold">AND</span>
-                                    <div className="h-px bg-gray-500 flex-1"></div>
-                                </div>
-
-                                {/* 日時検索 */}
-                                <div className="space-y-2">
-                                    <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><Calendar size={12}/> 日時</label>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="relative w-full">
-                                            <input 
-                                                type="date" 
-                                                className="w-full bg-black/40 border border-gray-600 rounded-xl pl-4 pr-4 py-3 text-white outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition text-sm appearance-none"
-                                                value={searchDate}
-                                                onChange={(e) => setSearchDate(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="relative w-full">
-                                            <select 
-                                                className="w-full bg-black/40 border border-gray-600 rounded-xl pl-4 pr-8 py-3 text-white outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition text-sm appearance-none"
-                                                value={searchTime}
-                                                onChange={(e) => setSearchTime(e.target.value)}
-                                            >
-                                                <option value="">全時間帯</option>
-                                                {timeOptions}
-                                            </select>
-                                        </div>
+                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 pt-4">
+                                
+                                {/* ID検索エリア - mtを大きくしてタグのはみ出しを防止 */}
+                                <div className="bg-gray-800/40 p-4 pt-6 rounded-2xl border border-gray-700/50 relative mt-2">
+                                    <div className="absolute -top-3 left-3 bg-gray-900 px-2 text-[10px] font-bold text-blue-400 border border-blue-500/30 rounded-full flex items-center gap-1">
+                                        <Hash size={10}/> ID指定で検索
+                                    </div>
+                                    <div className="space-y-2 mt-1">
+                                        <label className="text-xs text-gray-400 font-bold flex items-center gap-1">試合ID (完全一致)</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="例: aBc123" 
+                                            className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition font-mono tracking-wider placeholder-gray-700"
+                                            value={matchIdInput}
+                                            onChange={(e) => setMatchIdInput(e.target.value)}
+                                        />
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-4 opacity-30">
-                                    <div className="h-px bg-gray-500 flex-1"></div>
-                                    <span className="text-[10px] text-gray-400 font-bold">AND</span>
-                                    <div className="h-px bg-gray-500 flex-1"></div>
+                                <div className="flex items-center justify-center">
+                                    <span className="text-[10px] text-gray-500 font-bold bg-gray-900 px-2 relative z-10">OR</span>
+                                    <div className="absolute w-full h-px bg-gray-800"></div>
                                 </div>
 
-                                {/* プレイヤー名検索 */}
-                                <div className="space-y-2">
-                                    <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><User size={12}/> プレイヤー名</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="名前 (10文字以内)" 
-                                        maxLength={10}
-                                        className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition text-sm placeholder-gray-700"
-                                        value={searchName}
-                                        onChange={(e) => setSearchName(e.target.value)}
-                                    />
+                                {/* 条件検索エリア - mtを大きくしてタグのはみ出しを防止 */}
+                                <div className="bg-gray-800/40 p-4 pt-6 rounded-2xl border border-gray-700/50 relative mt-2">
+                                    <div className="absolute -top-3 left-3 bg-gray-900 px-2 text-[10px] font-bold text-purple-400 border border-purple-500/30 rounded-full flex items-center gap-1">
+                                        <Filter size={10}/> 条件で検索
+                                    </div>
+                                    
+                                    <div className="space-y-4 mt-1">
+                                        {/* 日時検索 */}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><Calendar size={12}/> 日時</label>
+                                                <button 
+                                                    onClick={() => { setSearchDate(""); setSearchTime(""); }}
+                                                    className="text-[10px] text-gray-500 hover:text-white bg-gray-800 px-2 py-0.5 rounded border border-gray-700 hover:bg-gray-700 transition flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={10}/> 指定しない
+                                                </button>
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                                {/* 未指定時はプレースホルダー風のスタイルにする */}
+                                                <input 
+                                                    type="date" 
+                                                    className={`w-full border rounded-xl pl-4 pr-4 py-3 outline-none transition text-sm appearance-none ${searchDate ? "bg-black/40 border-gray-600 text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50" : "bg-gray-800/30 border-gray-700 text-gray-500"}`}
+                                                    value={searchDate}
+                                                    onChange={(e) => setSearchDate(e.target.value)}
+                                                />
+                                                <select 
+                                                    className={`w-full border rounded-xl pl-4 pr-8 py-3 outline-none transition text-sm appearance-none ${searchTime ? "bg-black/40 border-gray-600 text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50" : "bg-gray-800/30 border-gray-700 text-gray-500"}`}
+                                                    value={searchTime}
+                                                    onChange={(e) => setSearchTime(e.target.value)}
+                                                >
+                                                    <option value="">全時間帯</option>
+                                                    {timeOptions}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-4 opacity-30">
+                                            <div className="h-px bg-gray-500 flex-1"></div>
+                                            <span className="text-[10px] text-gray-400 font-bold">AND</span>
+                                            <div className="h-px bg-gray-500 flex-1"></div>
+                                        </div>
+
+                                        {/* プレイヤー名検索 */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><User size={12}/> プレイヤー名</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="名前 (10文字以内)" 
+                                                maxLength={10}
+                                                className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition text-sm placeholder-gray-700"
+                                                value={searchName}
+                                                onChange={(e) => setSearchName(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
                             {error && (
-                                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-center text-xs font-bold animate-pulse flex items-start justify-center gap-2 mb-2">
+                                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-center text-xs font-bold animate-pulse flex items-start justify-center gap-2 mb-2 shrink-0">
                                     <AlertOctagon size={16} className="shrink-0 mt-0.5"/> <span>{error}</span>
                                 </div>
                             )}
 
-                            <button 
-                                onClick={() => handleSearchButton()} 
-                                disabled={loading}
-                                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                {loading ? <Loader className="animate-spin" size={20}/> : <Search size={20}/>}
-                                検索する
-                            </button>
+                            <div className="flex flex-col gap-2 mt-2 shrink-0">
+                                <button 
+                                    onClick={handleClearAll} 
+                                    className="w-full py-3 rounded-xl border border-gray-600 text-gray-400 hover:bg-gray-800 hover:text-white transition flex items-center justify-center gap-2 text-sm font-bold hover:border-gray-500"
+                                >
+                                    <RefreshCw size={16}/> 条件をすべてクリア
+                                </button>
+                                
+                                <button 
+                                    onClick={() => handleSearchButton()} 
+                                    disabled={loading}
+                                    className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                    {loading ? <Loader className="animate-spin" size={20}/> : <Search size={20}/>}
+                                    検索する
+                                </button>
+                            </div>
                         </div>
 
-                        {/* 右側: リストエリア (70%) */}
+                        {/* 右側: リストエリア */}
                         <div className="flex-1 min-w-0 bg-gray-900/40 rounded-3xl border border-gray-800/50 overflow-hidden relative backdrop-blur-sm flex flex-col">
                             <div className="p-4 border-b border-gray-800/50 bg-gray-900/50 flex justify-between items-center sticky top-0 z-10 backdrop-blur-md">
                                 <h3 className="font-bold text-gray-300 flex items-center gap-2"><List size={18} className="text-blue-400"/> GAME LIST</h3>
@@ -412,11 +469,10 @@ export const LogViewerScreen = ({ setView }) => {
                         </div>
                     </>
                 ) : (
-                    // === 詳細表示モード (3カラムレイアウト・30%-30%-30%・中央寄せ) ===
-                    // 親コンテナにpx-[5%]を設定して左右に合計10%の余白を作成。justify-centerで中央揃え。
+                    // === 詳細表示モード ===
                     <div className="flex-1 min-w-0 flex gap-4 h-full px-[5%] justify-center">
                         
-                        {/* 左カラム: マッチ情報 & プレイヤーリスト (flex-1 = 33% width) */}
+                        {/* 左カラム: マッチ情報 & プレイヤーリスト */}
                         <div className="flex-1 flex flex-col gap-4 min-h-0 h-full max-w-[33%]">
                             <div className="bg-[#0f1115] border border-white/10 rounded-[32px] p-6 shrink-0 shadow-lg relative overflow-hidden flex flex-col items-center">
                                 <div className="w-full flex justify-between items-center mb-8 border-b border-gray-800 pb-3">
@@ -430,14 +486,13 @@ export const LogViewerScreen = ({ setView }) => {
                             </div>
 
                             <div className="flex-1 min-h-0 rounded-[32px] overflow-hidden border border-white/10 bg-[#0f1115] shadow-lg flex flex-col">
-                                {/* ここで重複していたヘッダー部分を削除しました */}
                                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                                     <DeadPlayerInfoPanel players={searchResult.players} title="参加プレイヤーと役職" />
                                 </div>
                             </div>
                         </div>
 
-                        {/* 中央カラム: 生存者チャット (flex-1 = 33% width) */}
+                        {/* 中央カラム: 生存者チャット */}
                         <div className="flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative max-w-[33%]">
                             <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/40 backdrop-blur-sm shrink-0">
                                 <MessageSquare size={18} className="text-green-400"/> 生存者チャット
@@ -483,9 +538,8 @@ export const LogViewerScreen = ({ setView }) => {
                             )}
                         </div>
 
-                        {/* 右カラム: 詳細ログ (flex-1 = 33% width) */}
+                        {/* 右カラム: 詳細ログ */}
                         <div className="flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative shadow-lg max-w-[33%]">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-50 z-10"></div>
                             <div className="flex-1 overflow-hidden">
                                 <LogPanel logs={searchResult.room.logs} showSecret={true} user={{uid:'all'}} />
                             </div>
