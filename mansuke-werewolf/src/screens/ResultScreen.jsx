@@ -10,7 +10,7 @@ import { InfoModal } from '../components/ui/InfoModal';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { Notification } from '../components/ui/Notification';
 
-export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, myPlayer, user, maintenanceMode }) => {
+export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, myPlayer, user, maintenanceMode, setNotification }) => {
     if (!room || !players || players.length === 0) {
         return (
             <div className="min-h-screen bg-black flex items-center justify-center text-white">
@@ -42,12 +42,12 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     const [fullPlayers, setFullPlayers] = useState(players || []); 
     const [myTrueRole, setMyTrueRole] = useState(null);
     const [dataLoaded, setDataLoaded] = useState(false);
+    const [loading, setLoading] = useState(false); // ボタン操作用ローディング
     
     // 試合IDの表示管理
     const [showMatchId, setShowMatchId] = useState(true);
     // モーダル管理
     const [modalConfig, setModalConfig] = useState(null);
-    const [notification, setNotification] = useState(null);
 
     // 部屋が解散されたらホームへ戻る
     useEffect(() => {
@@ -185,38 +185,59 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     }
 
+    // もう一度遊ぶ（ホスト操作）
     const handleReplay = async () => {
         if (maintenanceMode) {
             setView('home'); // メンテナンスモード画面（ホーム）へ強制遷移
             return;
         }
-        if(!isHost) return;
+        if(!isHost || loading) return;
+        setLoading(true); // ローディング開始
         try {
             const fn = httpsCallable(functions, 'resetToLobby');
             await fn({ roomCode: roomId });
+            // 成功後はApp.jsxが部屋ステータス(waiting)を検知して遷移させるのを待つ
         } catch(e) {
             setNotification({ message: "エラーが発生しました: " + e.message, type: "error" });
+            setLoading(false); // 失敗時はローディング解除
         }
     };
 
+    // 部屋を解散する（ホスト操作）
     const confirmCloseRoom = () => {
         if (maintenanceMode) {
             setView('home');
             return;
         }
-        if(!isHost) return;
+        if(!isHost || loading) return;
+        
         setModalConfig({
             title: "部屋の解散",
             message: "本当に部屋を解散しますか？\n全てのデータはリセットされ、参加者はホームに戻ります。",
             isDanger: true,
+            confirmText: "解散する",
             onConfirm: async () => {
                 setModalConfig(null);
+                setLoading(true); // ローディング開始
                 try {
-                    await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomId), { status: 'closed' });
-                } catch(e) { console.error(e); }
+                    // updateDocではなく、Cloud FunctionsのdeleteRoomを使って確実に削除する
+                    const fn = httpsCallable(functions, 'deleteRoom');
+                    await fn({ roomCode: roomId });
+                    // 削除成功後はApp.jsxが検知して遷移させる
+                } catch(e) { 
+                    console.error(e);
+                    setNotification({ message: "解散に失敗しました: " + e.message, type: "error" });
+                    setLoading(false);
+                }
             },
             onCancel: () => setModalConfig(null)
         });
+    };
+    
+    // ホームに戻る（自分だけ）
+    const handleExit = () => {
+        setRoomCode("");
+        setView('home');
     };
 
     const copyMatchId = () => {
@@ -342,11 +363,34 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                       {isHost ? (
                           <>
                               <div className="w-full h-px bg-gray-800 my-2"></div>
-                              <button onClick={handleReplay} className="w-full px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-full hover:scale-105 transition shadow-lg flex items-center justify-center gap-2"><RefreshCw size={20}/> 同じ部屋・設定で再度プレイ</button>
-                              <button onClick={confirmCloseRoom} className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2"><LogOut size={18}/> 部屋を解散する</button>
+                              <button 
+                                  onClick={handleReplay} 
+                                  disabled={loading}
+                                  className="w-full px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-full hover:scale-105 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                  {loading ? <Loader className="animate-spin" size={20}/> : <RefreshCw size={20}/>}
+                                  同じ部屋・設定で再度プレイ
+                              </button>
+                              <button 
+                                  onClick={confirmCloseRoom} 
+                                  disabled={loading}
+                                  className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                  {loading ? <Loader className="animate-spin" size={18}/> : <LogOut size={18}/>}
+                                  部屋を解散する
+                              </button>
                           </>
                       ) : (
-                          <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse"><Loader size={18} className="animate-spin"/><span>ホストの操作を待っています...</span></div>
+                          <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse">
+                              <Loader size={18} className="animate-spin"/>
+                              <span>ホストの操作を待っています...</span>
+                          </div>
+                      )}
+                      
+                      {!isHost && (
+                          <button onClick={handleExit} className="w-full px-8 py-3 bg-gray-900 text-gray-400 font-bold rounded-full hover:bg-gray-800 border border-gray-700 transition flex items-center justify-center gap-2 mt-2">
+                              <LogOut size={18}/> ホームに戻る
+                          </button>
                       )}
                 </div>
             </div>

@@ -920,7 +920,8 @@ exports.advancePhase = onCall(async (request) => {
      const elapsed = (now - startTime) / 1000;
      let duration = 9999;
      
-     if (room.phase.startsWith('day')) duration = TIME_LIMITS.DISCUSSION;
+     // ★ここを修正：設定された議論時間を参照するように変更
+     if (room.phase.startsWith('day')) duration = room.discussionTime || TIME_LIMITS.DISCUSSION;
      else if (room.phase === 'voting') duration = TIME_LIMITS.VOTING;
      else if (room.phase.startsWith('announcement')) duration = TIME_LIMITS.ANNOUNCEMENT;
      else if (room.phase === 'countdown') duration = TIME_LIMITS.COUNTDOWN;

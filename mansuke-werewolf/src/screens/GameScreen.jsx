@@ -78,6 +78,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
     const roomNightAllDoneTime = room?.nightAllDoneTime;
     const roomHostId = room?.hostId;
     const roomWinner = room?.winner;
+
+    // ★議論時間を設定値から取得（設定がない場合はデフォルト値）
+    const discussionTime = room?.discussionTime || TIME_LIMITS.DISCUSSION;
+    // ★対面モード設定の取得
+    const inPersonMode = room?.inPersonMode || false;
     
     const baseDay = (typeof roomDay === 'number') ? roomDay : 1;
     const isGameEnded = roomStatus === 'finished' || roomStatus === 'aborted';
@@ -369,7 +374,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                  targetTime = getMillis(roomNightAllDoneTime);
             } else {
                  let duration = 5; 
-                 if (roomPhase.startsWith('day')) duration = TIME_LIMITS.DISCUSSION; 
+                 // ★議論時間を設定値から取得（設定がない場合はデフォルト値）
+                 if (roomPhase.startsWith('day')) duration = discussionTime; 
                  else if (roomPhase === 'voting') duration = TIME_LIMITS.VOTING; 
                  else if (roomPhase.startsWith('night')) duration = TIME_LIMITS.NIGHT; 
                  else if (roomPhase.startsWith('announcement')) duration = TIME_LIMITS.ANNOUNCEMENT; 
@@ -410,7 +416,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
             }
         }, 250); // チェック間隔を250msに変更
         return () => clearInterval(timer);
-    }, [roomStatus, roomPhase, roomPhaseStartTime, roomNightAllDoneTime, hasShownWaitMessage, optimisticPhase]);
+    }, [roomStatus, roomPhase, roomPhaseStartTime, roomNightAllDoneTime, hasShownWaitMessage, optimisticPhase, discussionTime]);
 
     // 強制フェーズ進行リクエスト
     const executeForceAdvance = () => {
@@ -534,7 +540,12 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
     const isNight = displayPhase?.startsWith('night');
     const isDay = displayPhase?.startsWith('day');
     const isVoting = displayPhase === 'voting';
-    const inPersonMode = room.inPersonMode;
+    // ★対面モード設定の反映
+    // const inPersonMode = room.inPersonMode; 
+    // inPersonModeはuseEffectや他の箇所でも参照するので、レンダリング内で定数として保持する形が望ましいですが、
+    // 現状のコード構造だと useEffect内とJSX内の両方で参照する必要があります。
+    // ここで定数として定義し、JSX内ではこれを使用します。
+    
     const isSpecialRole = ['werewolf', 'greatwolf', 'seer', 'sage', 'knight', 'trapper', 'detective', 'medium', 'assassin'].includes(myRole);
     const showActionPanel = !isDead && isSpecialRole;
     

@@ -22,6 +22,13 @@ match /system/settings {
   allow write: if false;
 }
 
+// ★追加: プレイヤー名検索用のコレクション・グループクエリ許可
+// LogViewerScreenでの collectionGroup('players') を成功させるために、
+// 任意の階層の players コレクションへの読み取りを許可します。
+match /{path=**}/players/{playerId} {
+  allow read: if isAuth();
+}
+
 // メインの部屋データへのパス
 match /artifacts/mansuke-jinro/public/data/rooms/{roomId} {
   

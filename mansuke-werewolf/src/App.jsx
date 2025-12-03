@@ -102,11 +102,14 @@ export default function App() {
         return;
     }
 
-    const roomUnsub = onSnapshot(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), (docSnap) => {
+    const roomRef = doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode);
+
+    const roomUnsub = onSnapshot(roomRef, (docSnap) => {
       if (docSnap.exists()) {
         const rData = { id: docSnap.id, ...docSnap.data() };
         setRoom(rData);
         
+        // 解散（closed）の検知：即座にホームへ
         if (rData.status === 'closed') {
             setRoomCode("");
             setView('home');
@@ -124,16 +127,22 @@ export default function App() {
         } else if (view === 'game' && (rData.status === 'finished' || rData.status === 'aborted')) {
             setView('result');
         } else if (view === 'result' && rData.status === 'waiting') {
+            // リザルト画面で部屋がwaitingに戻ったらロビーへ遷移（再戦時）
             setView('lobby');
         }
 
       } else {
+        // ドキュメント自体が消えた（削除された）場合
         setRoomCode("");
         setView('home');
-        setNotification({ message: "部屋が見つかりません", type: "error" });
+        setNotification({ message: "部屋が見つかりません（解散された可能性があります）", type: "info" });
       }
     }, (error) => {
         console.warn("Room sync warning:", error.message);
+        // 権限エラー等で読めなくなった場合もホームへ
+        setRoomCode("");
+        setView('home');
+        setNotification({ message: "部屋への接続が切れました", type: "error" });
     });
 
     const q = query(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players'));
@@ -150,7 +159,7 @@ export default function App() {
               setNotification({ message: "部屋から退出しました", type: "info" });
           }
       } else if (pList.length > 0) {
-          // データ取得ができているのに自分がいない＝削除された
+          // データ取得ができているのに自分がいない＝削除された/追い出された
           setRoomCode("");
           setView('home');
       }
@@ -241,7 +250,7 @@ export default function App() {
       {view === 'logs' && <LogViewerScreen setView={setView} />}
       {view === 'lobby' && <LobbyScreen user={user} room={room} roomCode={roomCode} players={players} setNotification={setNotification} setView={setView} setRoomCode={setRoomCode} />}
       {view === 'game' && <GameScreen user={user} room={room} roomCode={roomCode} players={players} myPlayer={myPlayer} setView={setView} />}
-      {view === 'result' && <ResultScreen user={user} room={room} roomCode={roomCode} players={players} myPlayer={myPlayer} setView={setView} setRoomCode={setRoomCode} maintenanceMode={maintenanceMode} />}
+      {view === 'result' && <ResultScreen user={user} room={room} roomCode={roomCode} players={players} myPlayer={myPlayer} setView={setView} setRoomCode={setRoomCode} maintenanceMode={maintenanceMode} setNotification={setNotification} />}
     </>
   );
 }
