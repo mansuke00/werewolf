@@ -674,7 +674,7 @@ exports.kickPlayer = onCall(async (request) => {
         const playerDocs = [];
         
         for (const docSnap of allPlayersSnap.docs) {
-            const p = { id: d.id, ...d.data() };
+            const p = { id: docSnap.id, ...docSnap.data() };
             // キック対象のステータスはメモリ上で更新しておく
             if (p.id === playerId) p.status = 'vanished';
             

@@ -31,6 +31,9 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
     // 管理者パスワードの取得
     useEffect(() => {
+        // ★修正: ユーザー認証が完了するまで処理を待機する
+        if (!user) return;
+
         const fetchAdminPassword = async () => {
             try {
                 const docRef = doc(db, 'system', 'settings');
@@ -43,7 +46,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             }
         };
         fetchAdminPassword();
-    }, []);
+    }, [user]); // ★修正: userを依存配列に追加し、ログイン完了時に再実行させる
 
     // メンテナンスモードの切り替え検知
     useEffect(() => {
@@ -373,7 +376,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     >
                         MANSUKE<br/>WEREWOLF
                     </h1>
-                    <p className="text-sm text-gray-500 font-mono">Server Edition Ver 2.3</p>
+                    <p className="text-sm text-gray-500 font-mono">Server Edition Ver 2.2</p>
                 </div>
 
                 <div className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative w-full mx-auto flex flex-col h-auto">

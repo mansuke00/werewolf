@@ -290,7 +290,7 @@ export const LogViewerScreen = ({ setView }) => {
                                             <div className="text-right flex flex-col items-end">
                                                 <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">WINNER</div>
                                                 <div className={`font-black text-lg text-right ${m.status === 'aborted' ? "text-gray-500" : m.winner === 'citizen' ? "text-green-400" : m.winner === 'werewolf' ? "text-red-400" : m.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
-                                                    {m.status === 'aborted' ? "強制終了" : m.winner === 'citizen' ? "市民陣営" : m.winner === 'werewolf' ? "人狼陣営" : m.winner === 'fox' ? "妖狐" : "---"}
+                                                    {m.status === 'aborted' ? "強制終了" : m.winner === 'citizen' ? "市民陣営" : m.winner === 'werewolf' ? "人狼陣営" : m.winner === 'fox' ? "妖狐" : "引き分け"}
                                                     {m.teruteruWon && (
                                                         <div className="text-sm text-green-300 mt-1 flex items-center justify-end gap-1">
                                                             <span>+ てるてる坊主</span>
@@ -348,20 +348,24 @@ export const LogViewerScreen = ({ setView }) => {
                                     <LogPanel logs={searchResult.room.logs} showSecret={true} user={{uid:'all'}} />
                                 </div>
                             </div>
-                            <div className="flex-1 bg-gray-900/80 backdrop-blur border border-gray-700 rounded-3xl overflow-hidden flex flex-col min-h-0 shadow-xl">
-                                <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/50"><FileText size={18} className="text-green-400"/> 生存者チャットアーカイブ (昼のみ)</div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-black/20">
-                                    {searchResult.chatMessages.map((msg, i) => (
-                                        <div key={i} className="flex flex-col items-start bg-gray-800/40 p-3 rounded-xl border border-gray-700/50">
-                                            <div className="flex items-baseline gap-2 mb-1">
-                                                <span className="text-xs font-bold text-blue-300">{msg.senderName}</span>
-                                                <span className="text-[10px] text-gray-500">{msg.day}日目</span>
+                            
+                            {/* 対面モード時は生存者チャットアーカイブを表示しない */}
+                            {!searchResult.room.inPersonMode && (
+                                <div className="flex-1 bg-gray-900/80 backdrop-blur border border-gray-700 rounded-3xl overflow-hidden flex flex-col min-h-0 shadow-xl">
+                                    <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/50"><FileText size={18} className="text-green-400"/> 生存者チャットアーカイブ (昼のみ)</div>
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-black/20">
+                                        {searchResult.chatMessages.map((msg, i) => (
+                                            <div key={i} className="flex flex-col items-start bg-gray-800/40 p-3 rounded-xl border border-gray-700/50">
+                                                <div className="flex items-baseline gap-2 mb-1">
+                                                    <span className="text-xs font-bold text-blue-300">{msg.senderName}</span>
+                                                    <span className="text-[10px] text-gray-500">{msg.day}日目</span>
+                                                </div>
+                                                <div className="text-sm text-gray-200 break-words w-full">{msg.text}</div>
                                             </div>
-                                            <div className="text-sm text-gray-200 break-words w-full">{msg.text}</div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
                 )}

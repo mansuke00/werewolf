@@ -328,7 +328,10 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView })
                     title: (isMyDeath && !isExecution) ? "" : `${roomDay}日目の朝`, 
                     subtitle: (
                         <div className="flex flex-col items-center gap-4 w-full">
-                            <p className="text-lg">{room.deathResult || "昨晩は誰も死亡しませんでした..."}</p>
+                            {/* 自分が死亡(かつ処刑ではない)した場合は、通常の朝のメッセージを表示しない */}
+                            {!(isMyDeath && !isExecution) && (
+                                <p className="text-lg">{room.deathResult || "昨晩は誰も死亡しませんでした..."}</p>
+                            )}
                             {myDeathContent}
                             {awakeningContent}
                         </div>

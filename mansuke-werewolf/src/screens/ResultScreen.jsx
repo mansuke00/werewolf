@@ -230,7 +230,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     };
 
     if(showDetail) return <div className="fixed inset-0 bg-gray-950 flex flex-col z-[100] p-6">
-        {showRoleDetail && <InfoModal title="全プレイヤー役職" onClose={() => setShowRoleDetail(false)}><DeadPlayerInfoPanel players={fullPlayers} title="最終結果" /></InfoModal>}
+        {showRoleDetail && <InfoModal title="全プレイヤー役職" onClose={() => setShowRoleDetail(false)}><DeadPlayerInfoPanel players={fullPlayers} title="プレイヤーの役職" /></InfoModal>}
         <div className="max-w-6xl w-full mx-auto h-full flex flex-col">
             <div className="flex justify-between items-center mb-4 shrink-0">
                 <div className="flex items-center gap-4">
@@ -321,11 +321,13 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                                       const roleName = def ? def.name : "不明";
                                       const Icon = def ? def.icon : Sun;
                                       return (
-                                          <div key={p.id} className={`w-40 p-4 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 ${p.status === 'dead' ? 'bg-gray-900/50 border-gray-700 opacity-70 grayscale' : 'bg-gradient-to-b from-gray-800 to-gray-900 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)]'}`}>
+                                          <div key={p.id} className={`w-40 p-4 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 relative ${p.status === 'dead' ? 'bg-gray-900/50 border-gray-700 opacity-70 grayscale' : 'bg-gradient-to-b from-gray-800 to-gray-900 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)]'}`}>
                                               <div className="mb-2 p-2 rounded-full bg-white/5"><Icon size={32} className={p.status === 'dead' ? "text-gray-500" : "text-yellow-400"}/></div>
-                                              <div className="font-bold text-white truncate w-full text-center flex items-center justify-center gap-1 text-sm mb-1">{p.status === 'dead' && <Skull size={12} className="text-gray-500"/>}{p.name}</div>
-                                              <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-gray-300">{roleName}</div>
-                                              {p.status === 'dead' && <div className="text-[10px] text-red-500 mt-1 font-bold">DEAD</div>}
+                                              <div className="font-bold text-white truncate w-full text-center flex items-center justify-center gap-1 text-sm mb-1">{p.name}</div>
+                                              <div className="flex items-center gap-1">
+                                                  <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-gray-300">{roleName}</div>
+                                                  {p.status === 'dead' && <span className="text-[9px] text-red-400 font-bold border border-red-900/50 px-1.5 py-0.5 rounded bg-red-950/30">DEAD</span>}
+                                              </div>
                                           </div>
                                       );
                                   })}
