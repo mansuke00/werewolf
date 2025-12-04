@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc, Hash, Filter, RefreshCw, Trash2 } from 'lucide-react';
-import { collection, query, where, getDocs, orderBy, Timestamp, collectionGroup, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, collectionGroup, getDoc, doc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
 import { getMillis } from '../utils/helpers.js';
@@ -26,10 +26,8 @@ export const LogViewerScreen = ({ setView }) => {
 
     // 初期化時に今日の日付をセット
     useEffect(() => {
-        const today = new Date().toISOString().split('T')[0];
-        setSearchDate(today);
-        // 初期表示でリストを読み込む
-        handleSearchButton(today); 
+        // 初期表示でリストを読み込む（引数なしで全件検索扱い）
+        handleSearchButton(null); 
     }, []);
 
     const handleClearAll = () => {
@@ -40,7 +38,7 @@ export const LogViewerScreen = ({ setView }) => {
         setError("");
     };
 
-    // 統合検索ボタンのハンドラ（AND検索に対応）
+    // 統合検索ボタンのハンドラ
     const handleSearchButton = async (initialDate = null) => {
         setLoading(true);
         setError("");
@@ -53,9 +51,28 @@ export const LogViewerScreen = ({ setView }) => {
             if (matchIdInput.trim()) {
                 await searchByMatchId(matchIdInput.trim());
             } else {
+                // 条件なしの場合は直近のデータを取得（負荷対策のため50件制限）
                 const targetDate = initialDate || searchDate;
                 const hasNameSearch = !!searchName.trim();
                 const hasDateSearch = !!targetDate;
+
+                if (!hasNameSearch && !hasDateSearch) {
+                    const recentQuery = query(
+                        collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'),
+                        orderBy('createdAt', 'desc'),
+                        limit(50)
+                    );
+                    const snapshot = await getDocs(recentQuery);
+                    const results = snapshot.docs
+                        .map(d => ({ id: d.id, ...d.data() }))
+                        .filter(d => ['finished', 'closed', 'aborted'].includes(d.status) && d.matchId);
+                    
+                    if (results.length === 0) setError("データが見つかりませんでした。");
+                    else setMatchList(results);
+                    
+                    setLoading(false);
+                    return;
+                }
 
                 // 並列処理用のPromise配列
                 const promises = [];
@@ -109,32 +126,29 @@ export const LogViewerScreen = ({ setView }) => {
 
                 let finalResults = [];
 
-                // 3. AND条件による結合
+                // 3. 結合条件（ANDではなくOR的な挙動、または片方のみの場合に対応）
                 if (hasNameSearch && hasDateSearch) {
-                    // 名前検索でヒットしたIDに含まれる日付検索結果のみを残す
+                    // 両方指定されている場合はAND検索（絞り込み）
                     finalResults = dateResults.filter(room => nameMatchIds.has(room.id));
                 } else if (hasNameSearch) {
-                    // 名前検索のみの場合、IDリストから部屋詳細を取得
-                    const roomPromises = Array.from(nameMatchIds).map(id => getDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', id)));
-                    const roomSnaps = await Promise.all(roomPromises);
-                    finalResults = roomSnaps
-                        .filter(s => s.exists() && ['finished', 'closed', 'aborted'].includes(s.data().status))
-                        .map(s => ({ id: s.id, ...s.data() }));
+                    // 名前検索のみ
+                    if (nameMatchIds.size > 0) {
+                        // IDリストから部屋詳細を取得（最大20件程度に制限しないと大量リードになるため注意が必要だが、ここでは一旦そのまま）
+                        // Firestoreのin句は10個までなので、forループで取得
+                        const idArray = Array.from(nameMatchIds);
+                        // 最新のものから取得したいが、IDだけでは順序不明。IDリストが多い場合は全取得はコストが高い。
+                        // ここでは簡易的に、IDリストの件数が多い場合は警告を出すか、制限する
+                        const limitedIds = idArray.slice(0, 20); // 20件制限
+                        
+                        const roomPromises = limitedIds.map(id => getDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', id)));
+                        const roomSnaps = await Promise.all(roomPromises);
+                        finalResults = roomSnaps
+                            .filter(s => s.exists() && ['finished', 'closed', 'aborted'].includes(s.data().status))
+                            .map(s => ({ id: s.id, ...s.data() }));
+                    }
                 } else if (hasDateSearch) {
                     // 日付検索のみ
                     finalResults = dateResults;
-                } else {
-                    // 条件なしの場合は直近のデータを取得（負荷対策のため制限付き）
-                    const recentQuery = query(
-                        collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'), 
-                        orderBy('createdAt', 'desc'),
-                        // limit(20) // 必要に応じて制限
-                    );
-                    // ここでは実装を省略し、日付指定を促すエラーにするか、全件検索を許容するか判断が必要
-                    // 今回はリストを空にしてエラーメッセージを表示
-                    setError("検索条件を指定してください（日時またはプレイヤー名）");
-                    setLoading(false);
-                    return;
                 }
 
                 // ソート
@@ -252,14 +266,23 @@ export const LogViewerScreen = ({ setView }) => {
              const isCitizenWin = room.winner === 'citizen';
              const isWerewolfWin = room.winner === 'werewolf';
              const isFoxWin = room.winner === 'fox';
+             const isTeruteruWin = room.teruteruWon === true;
              
              let label = "引き分け";
              let colorClass = "bg-[#1a1d26] border-gray-700 text-gray-400";
              let Icon = Trophy;
 
-             if (isCitizenWin) { label = "市民陣営 勝利"; colorClass = "bg-[#1a2620] border-green-500/30 text-green-400"; }
-             if (isWerewolfWin) { label = "人狼陣営 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/30 text-red-400"; Icon = Trophy; }
-             if (isFoxWin) { label = "妖狐 勝利"; colorClass = "bg-[#2a201a] border-orange-500/30 text-orange-400"; }
+             // てるてる坊主が勝利している場合、勝利陣営カードのデザインも赤色ベース（目立つ色）にするなどの対応を行う
+             if (isTeruteruWin) {
+                 if (isCitizenWin) { label = "市民陣営 ＋ てるてる"; colorClass = "bg-gradient-to-r from-green-900/50 to-red-900/50 border-red-500/50 text-white"; }
+                 else if (isWerewolfWin) { label = "人狼陣営 ＋ てるてる"; colorClass = "bg-[#2a1a1a] border-red-500/50 text-red-400"; }
+                 else if (isFoxWin) { label = "妖狐 ＋ てるてる"; colorClass = "bg-gradient-to-r from-orange-900/50 to-red-900/50 border-red-500/50 text-orange-200"; }
+                 else { label = "てるてる坊主 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/50 text-red-400"; }
+             } else {
+                 if (isCitizenWin) { label = "市民陣営 勝利"; colorClass = "bg-[#1a2620] border-green-500/30 text-green-400"; }
+                 if (isWerewolfWin) { label = "人狼陣営 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/30 text-red-400"; Icon = Trophy; }
+                 if (isFoxWin) { label = "妖狐 勝利"; colorClass = "bg-[#2a201a] border-orange-500/30 text-orange-400"; }
+             }
 
              return (
                  <div className={`w-full py-4 rounded-xl border font-bold flex items-center justify-center gap-2 tracking-wider ${colorClass}`}>
@@ -363,7 +386,7 @@ export const LogViewerScreen = ({ setView }) => {
 
                                         <div className="flex items-center gap-4 opacity-30">
                                             <div className="h-px bg-gray-500 flex-1"></div>
-                                            <span className="text-[10px] text-gray-400 font-bold">AND</span>
+                                            <span className="text-[10px] text-gray-400 font-bold">AND / OR</span>
                                             <div className="h-px bg-gray-500 flex-1"></div>
                                         </div>
 
@@ -477,7 +500,7 @@ export const LogViewerScreen = ({ setView }) => {
                         {/* スマホ用タブ切り替え（MD以上は非表示） */}
                         <div className="md:hidden flex bg-gray-900/80 p-1 rounded-xl shrink-0">
                             <button onClick={() => setDetailTab('info')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${detailTab === 'info' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>情報</button>
-                            <button onClick={() => setDetailTab('chat')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${detailTab === 'chat' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>チャット</button>
+                            {!searchResult.room.inPersonMode && <button onClick={() => setDetailTab('chat')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${detailTab === 'chat' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>チャット</button>}
                             <button onClick={() => setDetailTab('log')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${detailTab === 'log' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>ログ</button>
                         </div>
 
@@ -501,13 +524,13 @@ export const LogViewerScreen = ({ setView }) => {
                             </div>
                         </div>
 
-                        {/* 中央カラム: 生存者チャット */}
-                        <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative md:max-w-[33%] ${detailTab !== 'chat' ? 'hidden md:flex' : 'flex'}`}>
-                            <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/40 backdrop-blur-sm shrink-0">
-                                <MessageSquare size={18} className="text-green-400"/> 生存者チャット
-                            </div>
-                            
-                            {!searchResult.room.inPersonMode ? (
+                        {/* 中央カラム: 生存者チャット（対面モード時は非表示） */}
+                        {!searchResult.room.inPersonMode && (
+                            <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative md:max-w-[33%] ${detailTab !== 'chat' ? 'hidden md:flex' : 'flex'}`}>
+                                <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/40 backdrop-blur-sm shrink-0">
+                                    <MessageSquare size={18} className="text-green-400"/> 生存者チャット
+                                </div>
+                                
                                 <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-black/10">
                                     {groupedChatMessages.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-50 gap-2">
@@ -539,16 +562,11 @@ export const LogViewerScreen = ({ setView }) => {
                                         ))
                                     )}
                                 </div>
-                            ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2 bg-black/20">
-                                    <MessageSquare size={32} className="opacity-50"/>
-                                    <p className="text-sm font-bold">対面モードのためチャット記録なし</p>
-                                </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
 
-                        {/* 右カラム: 詳細ログ */}
-                        <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative shadow-lg md:max-w-[33%] ${detailTab !== 'log' ? 'hidden md:flex' : 'flex'}`}>
+                        {/* 右カラム: 詳細ログ（対面モード時は幅広にする） */}
+                        <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative shadow-lg ${searchResult.room.inPersonMode ? 'md:max-w-[66%]' : 'md:max-w-[33%]'} ${detailTab !== 'log' ? 'hidden md:flex' : 'flex'}`}>
                             <div className="flex-1 overflow-hidden">
                                 <LogPanel logs={searchResult.room.logs} showSecret={true} user={{uid:'all'}} />
                             </div>

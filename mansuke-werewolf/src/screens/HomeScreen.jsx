@@ -259,7 +259,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 </div>
                 
                 <div className="relative z-10 text-center max-w-2xl px-4">
-                    <Construction size={60} className="text-amber-500 mx-auto mb-6 animate-bounce-slow md:w-20 md:h-20 md:mb-8"/>
+                    {/* アニメーション削除: animate-bounce-slow を削除 */}
+                    <Construction size={60} className="text-amber-500 mx-auto mb-6 md:w-20 md:h-20 md:mb-8"/>
                     {/* 長押しトリガー対象 */}
                     <h1 
                         className="text-4xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-700 mb-6 tracking-tight select-none cursor-default active:scale-95 transition-transform"
@@ -376,7 +377,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     >
                         MANSUKE<br/>WEREWOLF
                     </h1>
-                    <p className="text-xs md:text-sm text-gray-500 font-mono">Server Edition Ver 2.3</p>
+                    <p className="text-xs md:text-sm text-gray-500 font-mono">Server Edition Ver 3.0 とりあえず公開Ver</p>
                 </div>
 
                 <div className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative w-full mx-auto flex flex-col h-auto">
@@ -476,8 +477,9 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto w-full">
+                                {/* アニメーション削除: group-hover:animate-bounce を削除 */}
                                 <button onClick={() => { setHomeStep('nickname'); setHomeMode('create'); }} className="md:col-span-2 py-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl shadow-lg hover:scale-105 transition transform text-white font-black text-xl flex flex-col items-center justify-center gap-2 group">
-                                    <Crown size={32} className="group-hover:animate-bounce"/> 部屋を新しく作成
+                                    <Crown size={32} /> 部屋を新しく作成
                                 </button>
                                 
                                 <div className="bg-gray-800/50 border border-gray-700 p-6 rounded-2xl flex flex-col items-center justify-center gap-4">

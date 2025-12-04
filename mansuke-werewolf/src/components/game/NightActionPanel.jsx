@@ -60,7 +60,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
 
     // 人狼チーム、ももすけチームなどはチーム単位でキーを管理
     let teamKey = myRole;
-    if (['werewolf', 'greatwolf'].includes(myRole)) teamKey = 'werewolf_team';
+    if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole)) teamKey = 'werewolf_team'; // 賢狼も人狼チームとして扱うよう修正
     if (myRole === 'assassin') teamKey = 'assassin'; // ももすけもチーム行動（複数人の場合）
     
     const pendingAction = roomData?.pendingActions?.[teamKey];
@@ -186,7 +186,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     const targets = safePlayers.filter(p => {
         if (!p || p.status === 'dead') return false;
         if (teammates && teammates.some(t => t.id === p.id)) return false; // 仲間は選べない
-        if (['werewolf', 'greatwolf'].includes(myRole) && p.id === myPlayer.id) return false;
+        if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) && p.id === myPlayer.id) return false;
         if (['seer', 'sage'].includes(myRole) && p.id === myPlayer.id) return false;
         if (['knight', 'trapper'].includes(myRole) && myPlayer.lastTarget === p.id) return false; // 連続護衛不可
         if (myRole === 'assassin' && p.id === myPlayer.id) return false;
@@ -197,7 +197,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     let doneTitle = "アクション完了";
     let doneIcon = Check;
     
-    if (['werewolf', 'greatwolf'].includes(myRole)) {
+    if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole)) {
         prompt = "どのプレイヤーを襲撃しますか？";
         doneTitle = "襲撃完了";
         doneIcon = Skull;
@@ -244,7 +244,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                      <p className="text-xs text-gray-400 font-bold uppercase mb-2">{doneTitle}</p>
                      <p className="text-lg text-white font-bold">
                          <span className="text-yellow-400">{targetName}</span> を{
-                            ['werewolf', 'greatwolf'].includes(myRole) ? "襲撃しました" :
+                            ['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) ? "襲撃しました" :
                             ['seer', 'sage'].includes(myRole) ? "占いました" :
                             myRole === 'assassin' ? (targetName === "誰の存在意義も消さない" ? "選択しました" : "存在意義を抹消する対象にしました") :
                             "護衛しました"
@@ -356,12 +356,12 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                 </h3>
                 {myRole === 'assassin' && (
                     <p className="text-xs text-red-300 bg-red-900/20 px-2 py-1 rounded border border-red-500/30 mb-2">
-                        ももすけは1ゲームにつき1人しか存在意義を抹消することができません。注意して能力を活用してください
+                        ももすけは1ゲームにつき1人しか存在意義を抹消することができません。注意して能力を活用してください。
                     </p>
                 )}
                 {needsConsensus && (
                     <p className="text-xs text-yellow-300 bg-yellow-900/30 px-2 py-1 rounded border border-yellow-500/30">
-                        役職チャットで誰を選択するかを話し合い、チームを代表して選択してください。
+                        あなたが今回の選択リーダーです！誰を選択するかを話し合い、チームを代表して選択してください。
                     </p>
                 )}
                 {['knight', 'trapper'].includes(myRole) && myPlayer.lastTarget && (

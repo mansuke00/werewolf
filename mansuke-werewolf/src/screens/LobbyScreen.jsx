@@ -59,7 +59,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           let wolfCount = 0;
           let humanCount = 0;
           Object.entries(roleSettings).forEach(([r, c]) => { 
-              if (['werewolf', 'greatwolf'].includes(r)) wolfCount += c;
+              if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount += c; // 賢狼も人狼としてカウント
               else humanCount += c;
           });
           
@@ -161,7 +161,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       // 役職カテゴリー分け
       const roleGroups = {
           citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder', 'assassin'],
-          werewolf: ['werewolf', 'greatwolf', 'madman'],
+          werewolf: ['werewolf', 'greatwolf', 'wise_wolf', 'madman'],
           third: ['fox', 'teruteru']
       };
 
