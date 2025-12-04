@@ -267,7 +267,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     return (
         <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 p-6 overflow-y-auto z-[100]">
             {modalConfig && <ConfirmationModal {...modalConfig} />}
-            {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
+            {/* 通知コンポーネントを削除しました（App.jsx側で表示されるため） */}
             
             <div className="max-w-6xl w-full text-center space-y-8 animate-fade-in-up pb-20 pt-10">
                 

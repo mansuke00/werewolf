@@ -5,30 +5,17 @@ import { db } from '../../config/firebase';
 import { ROLE_DEFINITIONS } from '../../constants/gameData';
 
 // 夜のアクションが無い役職や、カモフラージュが必要な役職向けのチャット
-export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, currentDay }) => {
-    // 初期メッセージを変更
-    const initialMessage = inPersonMode 
-        ? `こんにちは、${playerName}さん！待機時間にお話ししましょう。`
-        : `戦略について一緒に考えましょう。これからの立ち回り方の予定はありますか？`;
-
-    const [messages, setMessages] = useState([{ sender: 'gemini', text: initialMessage }]);
+export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, currentDay, messages, setMessages }) => {
+    // 親コンポーネントから messages, setMessages を受け取ることで履歴を維持する
+    
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [apiKey, setApiKey] = useState(null);
     const [keyError, setKeyError] = useState(false);
     const scrollRef = useRef(null);
-    const [lastDay, setLastDay] = useState(currentDay);
-
-    // 日付が変わったらチャット内容をリセット（対面モード以外）
-    useEffect(() => {
-        if (currentDay !== lastDay) {
-            // 対面モードの場合はリセットしない
-            if (!inPersonMode) {
-                setMessages([{ sender: 'gemini', text: `${currentDay}日目ですね。状況が変わりました。作戦を見直しましょうか？` }]);
-            }
-            setLastDay(currentDay);
-        }
-    }, [currentDay, lastDay, inPersonMode]);
+    
+    // 日付変更検知用
+    const [lastDay, setLastDay] = useState(0);
 
     // APIキー取得
     useEffect(() => {
@@ -42,7 +29,10 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
                 } else {
                     console.error("Gemini API Key not found.");
                     setKeyError(true);
-                    setMessages(prev => [...prev, { sender: 'gemini', text: "（システムエラー：APIキーの設定が見つかりません。）" }]);
+                    // エラーメッセージは、まだ履歴がない場合のみ追加
+                    if (messages && messages.length === 0) {
+                        setMessages(prev => [...prev, { sender: 'gemini', text: "（システムエラー：APIキーの設定が見つかりません。）" }]);
+                    }
                 }
             } catch (e) {
                 console.error("Error fetching API key:", e);
@@ -52,7 +42,33 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
         fetchApiKey();
     }, []);
 
+    // 自動スクロール
     useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+    // 初期化および自動アドバイスの制御
+    useEffect(() => {
+        if (!apiKey) return;
+
+        // 対面モード：履歴が空の場合のみ初期メッセージを表示（こちらは待機）
+        if (inPersonMode) {
+            if (messages.length === 0) {
+                setMessages([{ sender: 'gemini', text: `こんにちは、${playerName}さん！待機時間にお話ししましょう。` }]);
+            }
+            return;
+        }
+
+        // 対面モードOFF（戦略アドバイザー）：
+        // 日付が変わった、または履歴が空の場合にAIから能動的にアドバイスを開始
+        if (currentDay > lastDay || messages.length === 0) {
+            // 自動実行のトリガー文言（これはAIへの指示として送るが、チャット履歴には表示しない）
+            const triggerPrompt = messages.length === 0
+                ? "ゲーム開始直後です。私の役職と配役に基づき、初日の立ち回りについてアドバイスをください。"
+                : `${currentDay}日目になりました。これまでの議論や状況を踏まえて、今日のアドバイスをください。`;
+            
+            callGemini(triggerPrompt);
+            setLastDay(currentDay);
+        }
+    }, [apiKey, currentDay, inPersonMode, messages.length, lastDay]);
 
     const callGemini = async (userText) => {
         if (!apiKey) return;
@@ -64,6 +80,7 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
             systemPrompt = `
             あなたは人狼ゲームの待機時間にプレイヤーの話し相手をするAIです。
             相手のプレイヤー名は「${playerName}」です。
+            呼びかける際は必ず「${playerName}さん」と呼んでください。
             以下のルールを厳守してください：
             1. **や##などの装飾記号は一切使用しないでください。
             2. ゲームの内容や推理には触れず、楽しく雑談してください。
@@ -73,8 +90,8 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
         } else {
             // ゲームコンテキストの構築
             const myRoleName = gameContext?.myRole ? (ROLE_DEFINITIONS[gameContext.myRole]?.name || "不明") : "不明";
-            const chatHistory = (gameContext?.chatHistory || []).map(m => `${m.senderName}: ${m.text}`).join('\n').slice(-1000); // 直近のログのみ
-            const logs = (gameContext?.logs || []).map(l => l.text).join('\n').slice(-1000);
+            const chatHistory = (messages || []).map(m => `${m.sender === 'user' ? playerName : 'AI'}: ${m.text}`).join('\n').slice(-1500); 
+            const logs = (gameContext?.logs || []).map(l => l.text).join('\n').slice(-1500);
             
             // 役職配分情報のフォーマット作成
             const roleSettings = gameContext?.roleSettings || {};
@@ -86,11 +103,12 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
             systemPrompt = `
             あなたは人狼ゲームのアドバイザーAIです。
             プレイヤー名「${playerName}」さんの陣営が勝つためのアドバイスや立ち回りを教えてください。
+            呼びかける際は必ず「${playerName}さん」と呼んでください。
             情報は以下の通りです。
             
             [${playerName}の役職]: ${myRoleName}
             [今回の配役（内訳）]: ${roleDistStr}
-            [直近の公開チャット履歴]:
+            [これまでのチャット会話履歴]:
             ${chatHistory}
             [直近のゲームログ（${playerName}が知り得る情報のみ）]:
             ${logs}
@@ -100,6 +118,7 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
             2. 建設的かつ丁寧な会話を心がけ、ずっと敬語を使ってください。
             3. **や##などの装飾記号は一切使用しないでください。
             4. 回答は極めて簡潔に、短く要点のみを伝えてください。絶対に100文字以内に収めてください。長々とした説明は禁止です。
+            5. 2日目以降のアドバイスは、以前のアドバイスや会話履歴を踏まえて、一貫性のある助言をしてください。
             `;
         }
 
@@ -116,7 +135,7 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
                     contents: [
                         { role: "user", parts: [{ text: systemPrompt }] }, // システムプロンプトを最初のユーザーメッセージとして送信
                         ...historyContents, // 過去の履歴を展開
-                        { role: "user", parts: [{ text: userText }] } // 最新のユーザー発言
+                        { role: "user", parts: [{ text: userText }] } // 最新のユーザー発言（またはシステムトリガー）
                     ] 
                 })
             });
@@ -124,6 +143,7 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
             const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "申し訳ありません、うまく聞き取れませんでした。";
             setMessages(prev => [...prev, { sender: 'gemini', text: reply.replace(/[*#]/g, '') }]); // 念のため装飾記号を除去
         } catch (e) { 
+            console.error(e);
             setMessages(prev => [...prev, { sender: 'gemini', text: "通信エラーが発生しました。" }]); 
         } finally { 
             setLoading(false); 

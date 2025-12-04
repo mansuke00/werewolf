@@ -37,6 +37,7 @@ export const ROLE_DEFINITIONS = {
   assassin: { name: "ももすけ", team: "citizen", desc: "夜に一度だけ、護衛をも貫通して1人の存在意義を抹消する（暗殺する）ことができます。", icon: Crosshair },
   werewolf: { name: "人狼", team: "werewolf", desc: "夜に仲間と相談して市民1人を襲撃します。", icon: Moon },
   greatwolf: { name: "大狼", team: "werewolf", desc: "占われても「人狼でない」と判定される、強力な人狼です。", icon: Moon },
+  wise_wolf: { name: "賢狼", team: "werewolf", desc: "賢狼が生存している間、襲撃先のプレイヤーの正確な役職を人狼チームに提供する人狼です。", icon: Moon },
   madman: { name: "狂人", team: "werewolf", desc: "人狼の味方をする市民です。嘘をついて場を混乱させます。", icon: User },
   fox: { name: "妖狐", team: "third", desc: "人狼に襲撃されても死にませんが、占われると呪い殺されます。最後まで生き残れば単独勝利です。", icon: Sun },
   teruteru: { name: "てるてる坊主", team: "third", desc: "昼の投票で処刑されると、最終的な勝利陣営に加え追加で勝利となります。", icon: Smile },
