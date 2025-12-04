@@ -162,20 +162,20 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
     return (
         <div className="flex flex-col h-full bg-indigo-950/40 backdrop-blur-xl rounded-2xl border border-indigo-500/30 overflow-hidden shadow-2xl relative animate-fade-in">
             <div className="bg-indigo-900/40 border-b border-indigo-500/20">
-                <div className="p-3 flex items-center justify-between"><span className="font-bold text-indigo-200 flex items-center gap-2"><Sparkles size={16} className="text-yellow-300"/> Gemini AI Chat</span><span className="text-[10px] bg-indigo-800 px-2 py-1 rounded text-indigo-300 border border-indigo-500/30">Advisor</span></div>
-                <div className="bg-indigo-900/30 p-2 px-3 text-[11px] text-indigo-300 border-t border-indigo-500/10 leading-tight flex gap-2 items-start"><Info size={14} className="shrink-0 mt-0.5"/><span>{inPersonMode ? "対面モードのため、雑談相手として機能します。" : "ゲームのアドバイスを行います。AIはあなたの視点での情報しか持ちません。"}</span></div>
+                <div className="p-3 flex items-center justify-between"><span className="font-bold text-indigo-200 flex items-center gap-2 text-sm"><Sparkles size={16} className="text-yellow-300"/> Gemini AI Chat</span><span className="text-[10px] bg-indigo-800 px-2 py-1 rounded text-indigo-300 border border-indigo-500/30">Advisor</span></div>
+                <div className="bg-indigo-900/30 p-2 px-3 text-[10px] md:text-[11px] text-indigo-300 border-t border-indigo-500/10 leading-tight flex gap-2 items-start"><Info size={14} className="shrink-0 mt-0.5"/><span>{inPersonMode ? "対面モードのため、雑談相手として機能します。" : "ゲームのアドバイスを行います。AIはあなたの視点での情報しか持ちません。"}</span></div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                {messages.map((msg, i) => (<div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-gray-800 text-gray-200 rounded-tl-none border border-gray-700'}`}>{msg.text}</div></div>))}
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 custom-scrollbar">
+                {messages.map((msg, i) => (<div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl px-3 py-2 md:px-4 md:py-2 text-xs md:text-sm ${msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-gray-800 text-gray-200 rounded-tl-none border border-gray-700'}`}>{msg.text}</div></div>))}
                 {loading && <div className="text-xs text-indigo-400 animate-pulse ml-2">Geminiが入力中...</div>}
                 <div ref={scrollRef}></div>
             </div>
-            <form onSubmit={handleSend} className="p-3 bg-indigo-900/30 flex gap-2">
+            <form onSubmit={handleSend} className="p-2 md:p-3 bg-indigo-900/30 flex gap-2 shrink-0">
                 <input 
                     value={input} 
                     onChange={e => setInput(e.target.value)} 
                     disabled={!apiKey || keyError}
-                    className="flex-1 bg-indigo-950/50 border border-indigo-500/30 rounded-xl px-4 py-2 text-white placeholder-indigo-400/50 focus:outline-none focus:border-indigo-400 transition text-sm disabled:opacity-50" 
+                    className="flex-1 bg-indigo-950/50 border border-indigo-500/30 rounded-xl px-3 py-2 md:px-4 md:py-2 text-white placeholder-indigo-400/50 focus:outline-none focus:border-indigo-400 transition text-xs md:text-sm disabled:opacity-50" 
                     placeholder={!apiKey ? "システム準備中..." : "メッセージを入力..."}
                 />
                 <button type="submit" disabled={!apiKey || keyError} className="bg-indigo-600 p-2 rounded-xl text-white hover:bg-indigo-500 transition disabled:opacity-50 disabled:cursor-not-allowed">

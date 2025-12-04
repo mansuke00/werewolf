@@ -350,9 +350,9 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // ターゲット選択画面
     return (
         <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl ring-4 ring-purple-500/30">
-            <div className="text-center mb-4">
+            <div className="text-center mb-4 shrink-0">
                 <h3 className="text-lg font-bold text-white flex items-center justify-center gap-2 mb-1">
-                    <Moon className="text-purple-400" size={20}/> {prompt}
+                    <Moon className="text-purple-400 shrink-0" size={20}/> {prompt}
                 </h3>
                 {myRole === 'assassin' && (
                     <p className="text-xs text-red-300 bg-red-900/20 px-2 py-1 rounded border border-red-500/30 mb-2">
@@ -400,7 +400,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                                 : "border-gray-700 bg-gray-800/40 text-gray-400 hover:bg-gray-700/60"
                             }`}
                         >
-                            <span className="font-bold text-sm truncate w-full">{p.name}</span>
+                            <span className="font-bold text-sm truncate w-full px-1">{p.name}</span>
                         </button>
                     ))
                 )}
@@ -409,7 +409,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
             <button 
                 onClick={needsConsensus ? handlePropose : handleSubmitFinal} 
                 disabled={!selectedId || isSubmitting} 
-                className="mt-4 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2"
+                className="mt-4 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2 shrink-0"
             >
                 {isSubmitting ? <Loader className="animate-spin" size={20}/> : (needsConsensus ? "選択して承認へ" : "決定する")}
             </button>

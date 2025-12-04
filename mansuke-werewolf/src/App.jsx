@@ -215,15 +215,16 @@ export default function App() {
       {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
       
       {/* 復帰確認モーダル（独自リッチデザイン） */}
+      {/* レスポンシブ調整: モーダルの幅やマージンを調整 */}
       {showRestoreModal && (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[999] flex items-center justify-center p-6 animate-fade-in">
-              <div className="bg-gray-900 border-2 border-blue-500/50 rounded-3xl p-8 max-w-md w-full shadow-[0_0_50px_rgba(59,130,246,0.3)] relative text-center">
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[999] flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-gray-900 border-2 border-blue-500/50 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-[0_0_50px_rgba(59,130,246,0.3)] relative text-center">
                   <div className="mx-auto w-16 h-16 bg-blue-900/30 rounded-full flex items-center justify-center mb-6 border border-blue-500/30 animate-pulse">
                       <LogIn size={32} className="text-blue-400"/>
                   </div>
                   
-                  <h2 className="text-2xl font-black text-white mb-2 tracking-wide">WELCOME BACK</h2>
-                  <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                  <h2 className="text-xl md:text-2xl font-black text-white mb-2 tracking-wide">WELCOME BACK</h2>
+                  <p className="text-gray-400 text-xs md:text-sm mb-8 leading-relaxed">
                       中断されたゲームセッションが見つかりました。<br/>
                       部屋 <span className="font-mono text-blue-300 font-bold text-lg mx-1">{restoreRoomId}</span> に再接続しますか？
                   </p>

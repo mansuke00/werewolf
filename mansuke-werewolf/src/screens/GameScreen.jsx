@@ -637,7 +637,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 </div>
             </header>
 
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 lg:min-h-0 lg:overflow-hidden overflow-y-auto">
+            {/* スマホ対応: 縦積みレイアウト、スクロール可能、高さ調整 */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0 overflow-y-auto lg:overflow-hidden">
                 <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-auto shrink-0">
                     {isDead || isSpectator ? <DeadPlayerInfoPanel players={displayPlayers} /> : <MiniRoleCard role={myRole} teammates={teammates || []} originalRole={originalRole} />}
                     
@@ -649,7 +650,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                     
                     {!isDead && !isSpectator && (
-                        <div className="bg-black/20 p-3 rounded-xl overflow-y-auto custom-scrollbar border border-white/5 lg:flex-1 h-48 lg:h-auto min-h-0">
+                        <div className="bg-black/20 p-3 rounded-xl overflow-y-auto custom-scrollbar border border-white/5 lg:flex-1 h-32 lg:h-auto min-h-0">
                             <p className="text-xs text-gray-500 font-bold mb-2 flex items-center gap-1 sticky top-0 bg-black/20 p-1 backdrop-blur"><History size={12}/> チャットアーカイブ</p>
                             <div className="flex flex-wrap gap-2">{archiveButtons.map((btn, i) => (<button key={i} onClick={() => handleOpenArchive(btn.day, btn.phase)} className="bg-gray-800 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-700 transition">{btn.label}</button>))}</div>
                         </div>
@@ -660,7 +661,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                 </div>
 
-                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[80vh] min-h-[500px]">
+                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[50vh] min-h-[400px]">
                     {isDead || isSpectator ? (
                         <div className="h-full flex flex-col gap-4 min-h-0">
                             {/* 霊界チャット：対面モードでも利用可能 */}
@@ -713,7 +714,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                 </div>
 
-                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[60vh] min-h-[400px]">
+                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[40vh] min-h-[300px]">
                     {!isDead && !isSpectator && (
                         <div className="flex gap-2 shrink-0 lg:hidden">
                             <button onClick={() => setShowRoleDist(true)} className="flex-1 p-3 bg-gray-800 rounded-xl border border-gray-700 hover:bg-gray-700 transition flex items-center justify-center gap-2 font-bold text-sm"><Settings className="text-blue-400" size={16}/> 配分</button>

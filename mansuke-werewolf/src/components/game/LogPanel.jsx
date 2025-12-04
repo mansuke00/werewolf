@@ -74,34 +74,34 @@ export const LogPanel = ({ logs, showSecret, user }) => {
              <div className="flex flex-col border-b border-gray-700/50 bg-gray-800/60 backdrop-blur-sm shrink-0 z-20">
                  <div className="px-4 py-3 font-bold text-gray-200 text-sm flex justify-between items-center">
                      <span className="flex items-center gap-2 text-blue-100">
-                         <FileText size={16} className="text-blue-400"/> ゲームログ
+                         <FileText size={16} className="text-blue-400 shrink-0"/> ゲームログ
                      </span>
                      {showSecret && (
-                         <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full border border-yellow-500/30 flex items-center gap-1 shadow-[0_0_10px_rgba(234,179,8,0.2)] animate-pulse">
-                             <Eye size={12}/> 神視点
+                         <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full border border-yellow-500/30 flex items-center gap-1 shadow-[0_0_10px_rgba(234,179,8,0.2)] animate-pulse whitespace-nowrap">
+                             <Eye size={12} className="shrink-0"/> 神視点
                          </span>
                      )}
                  </div>
                  
-                 {/* タブ切り替えボタン */}
+                 {/* タブ切り替えボタン - スマホ用にテキストサイズ調整 */}
                  <div className="flex px-2 pb-2 gap-1">
                      <button 
                         onClick={() => setActiveTab('all')}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${activeTab === 'all' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+                        className={`flex-1 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition flex items-center justify-center gap-1 whitespace-nowrap ${activeTab === 'all' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
                      >
-                        <ListFilter size={12}/> すべて
+                        <ListFilter size={12} className="shrink-0"/> すべて
                      </button>
                      <button 
                         onClick={() => setActiveTab('progress')}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${activeTab === 'progress' ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+                        className={`flex-1 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition flex items-center justify-center gap-1 whitespace-nowrap ${activeTab === 'progress' ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
                      >
-                        <ScrollText size={12}/> 進行
+                        <ScrollText size={12} className="shrink-0"/> 進行
                      </button>
                      <button 
                         onClick={() => setActiveTab('role')}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${activeTab === 'role' ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/20' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+                        className={`flex-1 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition flex items-center justify-center gap-1 whitespace-nowrap ${activeTab === 'role' ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/20' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
                      >
-                        <Lock size={12}/> 役職
+                        <Lock size={12} className="shrink-0"/> 役職
                      </button>
                  </div>
              </div>
@@ -137,11 +137,11 @@ export const LogPanel = ({ logs, showSecret, user }) => {
                                                {/* メッセージ本文 */}
                                                <div className={`flex-1 rounded-xl p-3 border ${style.borderColor} ${style.bgColor} relative hover:bg-opacity-80 transition-colors shadow-sm`}>
                                                    <div className="flex items-center gap-2 mb-1.5 opacity-80">
-                                                       <Icon size={12} className={style.color} />
-                                                       <span className={`text-[10px] font-bold ${style.color} uppercase tracking-wider`}>
+                                                       <Icon size={12} className={`shrink-0 ${style.color}`} />
+                                                       <span className={`text-[10px] font-bold ${style.color} uppercase tracking-wider truncate`}>
                                                            {log.phase}
                                                        </span>
-                                                       {log.secret && <Lock size={10} className="text-amber-400 ml-auto"/>}
+                                                       {log.secret && <Lock size={10} className="text-amber-400 ml-auto shrink-0"/>}
                                                    </div>
                                                    <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words font-medium">
                                                        {log.text}

@@ -1,25 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import { Moon, Sun } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bell } from 'lucide-react';
 
-// 画面全体を覆う通知（フェーズ切り替え時などに使用）
-export const OverlayNotification = ({ title, subtitle, duration = 5000, isNight, onComplete }) => {
-    const [count, setCount] = useState(duration / 1000);
-    
-    // タイマー制御
+// 全画面で表示する重要な通知（夜の開始、朝の死体発見など）
+export const OverlayNotification = ({ title, subtitle, duration = 3000, onComplete, isNight = false }) => {
+    const [visible, setVisible] = useState(true);
+
     useEffect(() => {
-        if (count > 0) { const t = setTimeout(() => setCount(c => c - 1), 1000); return () => clearTimeout(t); } 
-        else if (onComplete) { onComplete(); }
-    }, [count, onComplete]);
-    
+        const timer = setTimeout(() => {
+            setVisible(false);
+            if (onComplete) setTimeout(onComplete, 500); // フェードアウト後にコールバック
+        }, duration);
+        return () => clearTimeout(timer);
+    }, [duration, onComplete]);
+
+    if (!visible) return null;
+
     return (
-        <div className={`fixed inset-0 z-[110] flex flex-col items-center justify-center text-center animate-fade-in-out pointer-events-none ${isNight ? "bg-indigo-950/95" : "bg-orange-50/95"}`}>
-            <div className={`p-12 rounded-3xl shadow-2xl max-w-3xl w-full mx-4 ${isNight ? "bg-gray-900 border border-purple-500/50 text-white" : "bg-white border border-orange-200 text-gray-800"}`}>
-                <div className="mb-6 animate-bounce">{isNight ? <Moon size={80} className="text-purple-400 mx-auto"/> : <Sun size={80} className="text-orange-500 mx-auto"/>}</div>
-                {title && <h2 className="text-5xl font-black mb-6 tracking-wider leading-tight">{title}</h2>}
-                {/* 以前は<p>タグ内に<div>を入れていたためHydration Errorが発生していた。<div>に変更して修正済み */}
-                <div className="text-2xl font-bold opacity-80 mb-8 whitespace-pre-wrap">{subtitle}</div>
-                <div className="text-5xl font-black opacity-30">あと {Math.ceil(count)} 秒</div>
+        <div className={`fixed inset-0 z-[200] flex flex-col items-center justify-center p-6 text-center transition-opacity duration-500 ${visible ? 'opacity-100' : 'opacity-0'} ${isNight ? "bg-black/90 text-purple-100" : "bg-black/80 text-white"}`}>
+            {/* 背景エフェクト */}
+            <div className={`absolute inset-0 z-0 ${isNight ? "bg-gradient-to-b from-purple-900/20 to-black" : "bg-gradient-to-b from-blue-900/20 to-black"}`}></div>
+            
+            <div className="relative z-10 animate-fade-in-up max-w-4xl w-full">
+                {title && (
+                    <h2 className={`text-4xl md:text-7xl font-black mb-4 md:mb-8 tracking-widest uppercase drop-shadow-2xl ${isNight ? "text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400" : "text-white"}`}>
+                        {title}
+                    </h2>
+                )}
+                
+                {subtitle && (
+                    <div className="text-lg md:text-3xl font-bold leading-relaxed md:leading-relaxed text-gray-200 whitespace-pre-wrap">
+                        {subtitle}
+                    </div>
+                )}
             </div>
+
+            {/* 装飾用ライン */}
+            <div className={`absolute bottom-0 left-0 w-full h-1 md:h-2 ${isNight ? "bg-purple-600" : "bg-blue-500"} animate-progress-bar`} style={{ animationDuration: `${duration}ms` }}></div>
         </div>
     );
 };

@@ -250,45 +250,45 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     };
 
-    if(showDetail) return <div className="fixed inset-0 bg-gray-950 flex flex-col z-[100] p-6">
+    if(showDetail) return <div className="fixed inset-0 bg-gray-950 flex flex-col z-[100] p-4 md:p-6">
         {showRoleDetail && <InfoModal title="全プレイヤー役職" onClose={() => setShowRoleDetail(false)}><DeadPlayerInfoPanel players={fullPlayers} title="プレイヤーの役職" /></InfoModal>}
         <div className="max-w-6xl w-full mx-auto h-full flex flex-col">
-            <div className="flex justify-between items-center mb-4 shrink-0">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-2"><FileText className="text-blue-400"/> 詳細ログ</h2>
-                    <button onClick={() => setShowRoleDetail(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-500 transition">全プレイヤーの役職を確認</button>
+            <div className="flex flex-col md:flex-row justify-between items-center mb-4 shrink-0 gap-3">
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                    <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><FileText className="text-blue-400"/> 詳細ログ</h2>
+                    <button onClick={() => setShowRoleDetail(true)} className="ml-auto md:ml-0 px-3 py-1.5 md:px-4 md:py-2 bg-blue-600 text-white rounded-xl text-xs md:text-sm hover:bg-blue-500 transition whitespace-nowrap">全プレイヤーの役職を確認</button>
                 </div>
-                <button onClick={() => setShowDetail(false)} className="px-4 py-2 bg-gray-800 text-white rounded-xl hover:bg-gray-700">戻る</button>
+                <button onClick={() => setShowDetail(false)} className="w-full md:w-auto px-4 py-2 bg-gray-800 text-white rounded-xl hover:bg-gray-700 text-sm md:text-base">戻る</button>
             </div>
             <div className="flex-1 overflow-hidden min-h-0"><LogPanel logs={logs} showSecret={true} user={{uid: 'all'}} /></div>
         </div>
     </div>;
 
     return (
-        <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 p-6 overflow-y-auto z-[100]">
+        <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 p-4 md:p-6 overflow-y-auto z-[100]">
             {modalConfig && <ConfirmationModal {...modalConfig} />}
             {/* 通知コンポーネントを削除しました（App.jsx側で表示されるため） */}
             
-            <div className="max-w-6xl w-full text-center space-y-8 animate-fade-in-up pb-20 pt-10">
+            <div className="max-w-6xl w-full text-center space-y-4 md:space-y-8 animate-fade-in-up pb-20 pt-10">
                 
                 {/* 勝利アイコン表示エリア */}
                 {isAborted ? (
-                    <div className="inline-block p-4 rounded-full bg-red-900/50 mb-4 animate-pulse"><AlertOctagon size={64} className="text-red-500"/></div>
+                    <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4 animate-pulse"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
                 ) : (
-                    <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-4 relative">
-                        {isCitizenWin ? <Sun size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={64} className="text-orange-500 animate-pulse"/> : <Moon size={64} className="text-red-500"/>}
-                        {isTeruteruWin && <Smile size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50 animate-bounce"/>}
+                    <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-2 md:mb-4 relative">
+                        {isCitizenWin ? <Sun size={48} md:size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={48} md:size={64} className="text-orange-500 animate-pulse"/> : <Moon size={48} md:size={64} className="text-red-500"/>}
+                        {isTeruteruWin && <Smile size={24} md:size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50 animate-bounce"/>}
                     </div>
                 )}
                 
                 {/* メインタイトル */}
-                <h1 className={`text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r ${titleGradient} drop-shadow-2xl`}>
+                <h1 className={`text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r ${titleGradient} drop-shadow-2xl`}>
                     {mainTitle}
                 </h1>
                 
                 {/* 詳細説明 */}
                 <div className="flex flex-col items-center justify-center gap-2">
-                    <p className="text-2xl text-white font-bold tracking-widest">{resultDescription}</p>
+                    <p className="text-lg md:text-2xl text-white font-bold tracking-widest">{resultDescription}</p>
                 </div>
                 
                 <style>{`
@@ -296,10 +296,10 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     @keyframes pulse-border { 0% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } 50% { border-color: rgba(253, 224, 71, 1); box-shadow: 0 0 40px rgba(234, 179, 8, 0.6); } 100% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } }
                 `}</style>
 
-                {/* 試合IDカード (画面右下に固定表示) */}
+                {/* 試合IDカード (画面右下に固定表示 - スマホでは下部に配置) */}
                 {showMatchId && (
-                    <div className="fixed bottom-4 right-4 z-[200] max-w-sm w-full animate-fade-in-up">
-                        <div className="bg-gray-900/90 border border-indigo-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(99,102,241,0.2)] backdrop-blur-md relative hover:border-indigo-500/50 transition">
+                    <div className="fixed bottom-4 right-4 left-4 md:left-auto md:w-auto z-[200] animate-fade-in-up">
+                        <div className="bg-gray-900/90 border border-indigo-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(99,102,241,0.2)] backdrop-blur-md relative hover:border-indigo-500/50 transition max-w-sm w-full mx-auto md:mx-0">
                             <button onClick={() => setShowMatchId(false)} className="absolute top-2 right-2 text-gray-500 hover:text-white transition"><X size={16}/></button>
                             
                             <div className="flex flex-col items-start gap-2">
@@ -319,7 +319,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                                     <div id="copy-feedback" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow opacity-0 transition-opacity pointer-events-none whitespace-nowrap">Copied!</div>
                                 </button>
 
-                                <p className="text-xs md:text-sm text-gray-500 leading-tight mt-1">
+                                <p className="text-xs text-gray-500 leading-tight mt-1">
                                     ホーム画面で検索すると、詳細ログをいつでも確認できます。
                                 </p>
                             </div>
@@ -330,24 +330,24 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                 {/* 勝利プレイヤー一覧 */}
                 {!isAborted && (
                     <div className="flex flex-col items-center mt-8 w-full">
-                          <p className="text-gray-400 text-sm mb-4 uppercase tracking-widest font-bold flex items-center gap-2"><Trophy size={16} className="text-yellow-500"/> WINNERS</p>
+                          <p className="text-gray-400 text-xs md:text-sm mb-4 uppercase tracking-widest font-bold flex items-center gap-2"><Trophy size={16} className="text-yellow-500"/> WINNERS</p>
                           {!dataLoaded ? (
                               <div className="flex items-center gap-2 text-gray-500 animate-pulse"><Loader size={16} className="animate-spin"/><span>勝者を判定中...</span></div>
                           ) : winningPlayers.length === 0 ? (
                               <p className="text-gray-500">勝者なし</p>
                           ) : (
-                              <div className="flex flex-wrap justify-center gap-4 w-full">
+                              <div className="flex flex-wrap justify-center gap-2 md:gap-4 w-full">
                                   {winningPlayers.map(p => {
                                       const def = p.role && ROLE_DEFINITIONS[p.role];
                                       const roleName = def ? def.name : "不明";
                                       const Icon = def ? def.icon : Sun;
                                       return (
-                                          <div key={p.id} className={`w-40 p-4 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 relative ${p.status === 'dead' ? 'bg-gray-900/50 border-gray-700 opacity-70 grayscale' : 'bg-gradient-to-b from-gray-800 to-gray-900 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)]'}`}>
-                                              <div className="mb-2 p-2 rounded-full bg-white/5"><Icon size={32} className={p.status === 'dead' ? "text-gray-500" : "text-yellow-400"}/></div>
-                                              <div className="font-bold text-white truncate w-full text-center flex items-center justify-center gap-1 text-sm mb-1">{p.name}</div>
+                                          <div key={p.id} className={`w-32 md:w-40 p-3 md:p-4 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 relative ${p.status === 'dead' ? 'bg-gray-900/50 border-gray-700 opacity-70 grayscale' : 'bg-gradient-to-b from-gray-800 to-gray-900 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)]'}`}>
+                                              <div className="mb-2 p-2 rounded-full bg-white/5"><Icon size={24} md:size={32} className={p.status === 'dead' ? "text-gray-500" : "text-yellow-400"}/></div>
+                                              <div className="font-bold text-white truncate w-full text-center flex items-center justify-center gap-1 text-xs md:text-sm mb-1">{p.name}</div>
                                               <div className="flex items-center gap-1">
-                                                  <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-gray-300">{roleName}</div>
-                                                  {p.status === 'dead' && <span className="text-[9px] text-red-400 font-bold border border-red-900/50 px-1.5 py-0.5 rounded bg-red-950/30">DEAD</span>}
+                                                  <div className="px-2 py-0.5 rounded text-[9px] md:text-[10px] font-bold bg-white/10 text-gray-300">{roleName}</div>
+                                                  {p.status === 'dead' && <span className="text-[8px] md:text-[9px] text-red-400 font-bold border border-red-900/50 px-1.5 py-0.5 rounded bg-red-950/30">DEAD</span>}
                                               </div>
                                           </div>
                                       );
@@ -358,15 +358,15 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                 )}
 
                 {/* アクションボタン */}
-                <div className="pt-8 flex flex-col items-center gap-4 w-full max-w-md mx-auto">
-                      <button onClick={() => setShowDetail(true)} className="w-full px-8 py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2"><FileText size={20}/> 詳細ログを確認</button>
+                <div className="pt-8 flex flex-col items-center gap-3 w-full max-w-md mx-auto pb-24 md:pb-0">
+                      <button onClick={() => setShowDetail(true)} className="w-full px-8 py-3 md:py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm md:text-base"><FileText size={20}/> 詳細ログを確認</button>
                       {isHost ? (
                           <>
                               <div className="w-full h-px bg-gray-800 my-2"></div>
                               <button 
                                   onClick={handleReplay} 
                                   disabled={loading}
-                                  className="w-full px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-full hover:scale-105 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="w-full px-8 py-3 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-full hover:scale-105 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
                               >
                                   {loading ? <Loader className="animate-spin" size={20}/> : <RefreshCw size={20}/>}
                                   同じ部屋・設定で再度プレイ
@@ -374,21 +374,21 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                               <button 
                                   onClick={confirmCloseRoom} 
                                   disabled={loading}
-                                  className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
                               >
                                   {loading ? <Loader className="animate-spin" size={18}/> : <LogOut size={18}/>}
                                   部屋を解散する
                               </button>
                           </>
                       ) : (
-                          <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse">
+                          <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse text-sm">
                               <Loader size={18} className="animate-spin"/>
                               <span>ホストの操作を待っています...</span>
                           </div>
                       )}
                       
                       {!isHost && (
-                          <button onClick={handleExit} className="w-full px-8 py-3 bg-gray-900 text-gray-400 font-bold rounded-full hover:bg-gray-800 border border-gray-700 transition flex items-center justify-center gap-2 mt-2">
+                          <button onClick={handleExit} className="w-full px-8 py-3 bg-gray-900 text-gray-400 font-bold rounded-full hover:bg-gray-800 border border-gray-700 transition flex items-center justify-center gap-2 mt-2 text-sm md:text-base">
                               <LogOut size={18}/> ホームに戻る
                           </button>
                       )}
