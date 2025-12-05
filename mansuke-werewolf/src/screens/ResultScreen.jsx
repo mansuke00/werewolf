@@ -269,14 +269,14 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
             {modalConfig && <ConfirmationModal {...modalConfig} />}
             {/* 通知コンポーネントを削除しました（App.jsx側で表示されるため） */}
             
-            <div className="max-w-6xl w-full text-center space-y-4 md:space-y-8 animate-fade-in pb-20 pt-10">
+            <div className="max-w-6xl w-full text-center space-y-4 md:space-y-8 animate-fade-in-up pb-20 pt-10">
                 
-                {/* 勝利アイコン表示エリア (アニメーション削除) */}
+                {/* 勝利アイコン表示エリア */}
                 {isAborted ? (
-                    <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
+                    <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4 animate-pulse"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
                 ) : (
                     <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-2 md:mb-4 relative">
-                        {isCitizenWin ? <Sun size={48} md:size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={48} md:size={64} className="text-orange-500"/> : <Moon size={48} md:size={64} className="text-red-500"/>}
+                        {isCitizenWin ? <Sun size={48} md:size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={48} md:size={64} className="text-orange-500 animate-pulse"/> : <Moon size={48} md:size={64} className="text-red-500"/>}
                         {isTeruteruWin && <Smile size={24} md:size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50 animate-bounce"/>}
                     </div>
                 )}
@@ -296,39 +296,12 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     @keyframes pulse-border { 0% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } 50% { border-color: rgba(253, 224, 71, 1); box-shadow: 0 0 40px rgba(234, 179, 8, 0.6); } 100% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } }
                 `}</style>
 
-                {/* 試合IDカード (右下固定・コンパクト化) */}
-                {showMatchId && (
-                    <div className="fixed bottom-0 right-0 m-4 z-[200] animate-fade-in">
-                        <div className="bg-gray-900/95 border border-indigo-500/30 rounded-xl p-3 shadow-lg backdrop-blur-md relative hover:border-indigo-500/50 transition w-full max-w-[220px]">
-                            <button onClick={() => setShowMatchId(false)} className="absolute -top-2 -right-2 bg-gray-800 rounded-full p-1 text-gray-400 hover:text-white transition shadow"><X size={12}/></button>
-                            
-                            <div className="flex flex-col items-start gap-1.5">
-                                <div className="flex items-center gap-1.5">
-                                    <div className="bg-indigo-600/20 p-1 rounded-lg"><Search size={12} className="text-indigo-400"/></div>
-                                    <span className="text-[10px] font-bold text-indigo-300">MATCH ID</span>
-                                </div>
-
-                                <button 
-                                    onClick={copyMatchId}
-                                    className="w-full relative flex items-center justify-between bg-black/40 px-2 py-1.5 rounded-lg border border-white/10 hover:bg-black/60 hover:border-indigo-400/50 transition group"
-                                >
-                                    <span className="text-sm font-mono font-black text-white tracking-widest group-hover:text-indigo-200 truncate">{matchId}</span>
-                                    <div className="flex items-center gap-1 text-[9px] text-gray-500 group-hover:text-white transition shrink-0 ml-2">
-                                        <Copy size={10}/>
-                                    </div>
-                                    <div id="copy-feedback" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow opacity-0 transition-opacity pointer-events-none whitespace-nowrap">Copied!</div>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* 勝利プレイヤー一覧 (アニメーション削除) */}
+                {/* 勝利プレイヤー一覧 */}
                 {!isAborted && (
                     <div className="flex flex-col items-center mt-8 w-full">
                           <p className="text-gray-400 text-xs md:text-sm mb-4 uppercase tracking-widest font-bold flex items-center gap-2"><Trophy size={16} className="text-yellow-500"/> WINNERS</p>
                           {!dataLoaded ? (
-                              <div className="flex items-center gap-2 text-gray-500"><Loader size={16} className="animate-spin"/><span>勝者を判定中...</span></div>
+                              <div className="flex items-center gap-2 text-gray-500 animate-pulse"><Loader size={16} className="animate-spin"/><span>勝者を判定中...</span></div>
                           ) : winningPlayers.length === 0 ? (
                               <p className="text-gray-500">勝者なし</p>
                           ) : (
@@ -353,7 +326,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     </div>
                 )}
 
-                {/* アクションボタン (アニメーション削除) */}
+                {/* アクションボタン */}
                 <div className="pt-8 flex flex-col items-center gap-3 w-full max-w-md mx-auto pb-24 md:pb-0">
                       <button onClick={() => setShowDetail(true)} className="w-full px-8 py-3 md:py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm md:text-base"><FileText size={20}/> 詳細ログを確認</button>
                       {isHost ? (
@@ -377,7 +350,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                               </button>
                           </>
                       ) : (
-                          <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 text-sm">
+                          <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse text-sm">
                               <Loader size={18} className="animate-spin"/>
                               <span>ホストの操作を待っています...</span>
                           </div>
@@ -390,6 +363,37 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                       )}
                 </div>
             </div>
+
+            {/* 試合IDカード (画面右下に固定表示 - スクロール影響回避のためルート直下に移動) */}
+            {showMatchId && (
+                <div className="fixed bottom-0 right-0 z-[200] animate-fade-in-up">
+                    <div className="bg-gray-900/90 border border-indigo-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(99,102,241,0.2)] backdrop-blur-md relative hover:border-indigo-500/50 transition max-w-sm w-full mx-auto md:mx-0">
+                        <button onClick={() => setShowMatchId(false)} className="absolute top-2 right-2 text-gray-500 hover:text-white transition"><X size={16}/></button>
+                        
+                        <div className="flex flex-col items-start gap-2">
+                            <div className="flex items-center gap-2">
+                                <div className="bg-indigo-600/20 p-1.5 rounded-lg"><Search size={14} className="text-indigo-400"/></div>
+                                <span className="text-xs font-bold text-indigo-300">この試合の試合IDは以下の通りです</span>
+                            </div>
+
+                            <button 
+                                onClick={copyMatchId}
+                                className="w-full relative flex items-center justify-between bg-black/40 px-3 py-2 rounded-xl border border-white/10 hover:bg-black/60 hover:border-indigo-400/50 transition group"
+                            >
+                                <span className="text-xl font-mono font-black text-white tracking-widest group-hover:text-indigo-200">{matchId}</span>
+                                <div className="flex items-center gap-1 text-[10px] text-gray-500 group-hover:text-white transition">
+                                    <Copy size={12}/> COPY
+                                </div>
+                                <div id="copy-feedback" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow opacity-0 transition-opacity pointer-events-none whitespace-nowrap">Copied!</div>
+                            </button>
+
+                            <p className="text-xs text-gray-500 leading-tight mt-1">
+                                ホーム画面で検索すると、詳細ログをいつでも確認できます。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

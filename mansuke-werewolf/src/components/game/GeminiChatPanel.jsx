@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Sparkles, User, Cpu } from 'lucide-react';
-import { getMillis } from '../../utils/helpers.js';
+import { Send, Sparkles, User, Cpu, Info } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../config/firebase.js';
 import { ROLE_DEFINITIONS } from '../../constants/gameData.js';
-
-// APIキー設定（環境変数または定数）
-const apiKey = ""; // ランタイムで提供されるため空文字列
 
 export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, currentDay, messages, setMessages }) => {
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [apiKey, setApiKey] = useState("");
     const messagesEndRef = useRef(null);
     const hasInitialized = useRef(false);
 
@@ -19,33 +18,48 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages]);
+    }, [messages, isLoading]);
 
-    // 初回メッセージ（重複防止）
+    // APIキーの取得（Firestore または LocalStorage）
+    // 設定UIは削除しましたが、裏側での取得ロジックは維持します
     useEffect(() => {
-        if (!hasInitialized.current && messages.length === 0) {
-            hasInitialized.current = true;
-            // 少し遅延させて自然な感じにする
-            setTimeout(() => {
-                const initialMsg = {
-                    id: Date.now(),
-                    text: `こんばんは、${playerName}さん。今夜の作戦会議を始めましょうか。今日の議論で気になったことや、今後の動きについて相談に乗りますよ。`,
-                    sender: 'ai',
-                    timestamp: new Date()
-                };
-                setMessages([initialMsg]);
-            }, 500);
-        }
-    }, [playerName, messages.length, setMessages]);
+        const fetchApiKey = async () => {
+            // 1. LocalStorageを確認（以前入力されたものがあれば）
+            const localKey = localStorage.getItem('gemini_api_key');
+            if (localKey) {
+                setApiKey(localKey);
+                return;
+            }
 
-    // システムプロンプトの構築
+            // 2. Firestoreを確認（管理者が設定した場合）
+            try {
+                const docRef = doc(db, 'system', 'settings');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists() && docSnap.data().geminiApiKey) {
+                    setApiKey(docSnap.data().geminiApiKey);
+                }
+            } catch (e) {
+                console.error("Failed to fetch API key:", e);
+            }
+        };
+        fetchApiKey();
+    }, []);
+
+    // 初回メッセージ生成（APIキー取得後かつ未実行の場合のみ）
+    useEffect(() => {
+        if (!hasInitialized.current && messages.length === 0 && apiKey) {
+            hasInitialized.current = true;
+            generateAiResponse();
+        }
+    }, [apiKey]);
+
     const constructSystemPrompt = () => {
         const { myRole, logs, chatHistory, roleSettings, teammates, lastActionResult, players } = gameContext;
         
         // ログをテキスト化
         const logsText = logs.map(l => `[${l.phase}] ${l.text}`).join("\n");
         
-        // チャット履歴を日付別に整理
+        // チャット履歴
         let chatText = "【生存者チャット履歴】\n";
         if (inPersonMode) {
             chatText += "(対面モードのためチャット履歴はありません)\n";
@@ -56,7 +70,6 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
                 if (!historyByDay[d]) historyByDay[d] = [];
                 historyByDay[d].push(`${msg.senderName}: ${msg.text}`);
             });
-            
             Object.keys(historyByDay).sort((a,b)=>a-b).forEach(day => {
                 chatText += `--- ${day}日目 ---\n`;
                 chatText += historyByDay[day].join("\n") + "\n";
@@ -65,36 +78,22 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
             chatText += "(履歴なし)\n";
         }
 
-        // 役職配分
+        // ゲーム情報
         let rolesText = "【役職配分】\n";
-        if (roleSettings) {
-            Object.entries(roleSettings).forEach(([role, count]) => {
-                if (count > 0) rolesText += `${ROLE_DEFINITIONS[role]?.name || role}: ${count}人\n`;
-            });
-        }
+        if (roleSettings) Object.entries(roleSettings).forEach(([r, c]) => { if(c>0) rolesText += `${ROLE_DEFINITIONS[r]?.name||r}: ${c}人\n`; });
 
-        // 仲間情報
-        let matesText = "【仲間の情報】\n";
-        if (teammates && teammates.length > 0) {
-            matesText += teammates.map(t => `${t.name} (${ROLE_DEFINITIONS[t.role]?.name || t.role})`).join(", ") + "\n";
-        } else {
-            matesText += "なし（孤独ですね...）\n";
-        }
+        let matesText = "【仲間】\n";
+        if (teammates?.length) matesText += teammates.map(t => `${t.name} (${ROLE_DEFINITIONS[t.role]?.name||t.role})`).join(", ") + "\n";
+        else matesText += "なし\n";
 
-        // 夜のアクション結果
-        let actionResultText = "【直近の夜のアクション結果】\n";
-        if (lastActionResult && lastActionResult.length > 0) {
-            actionResultText += lastActionResult.map(c => `${c.label}: ${c.value} (対象: ${c.sub || 'なし'})`).join("\n") + "\n";
-        } else {
-            actionResultText += "特になし\n";
-        }
+        let resultText = "【直近のアクション結果】\n";
+        if (lastActionResult?.length) resultText += lastActionResult.map(c => `${c.label}: ${c.value}`).join("\n") + "\n";
+        else resultText += "なし\n";
 
-        // 生存者リスト
-        let survivorsText = "【現在の生存者】\n";
+        let survivorsText = "【生存者】\n";
         if (players) {
             const alive = players.filter(p => p.status === 'alive');
-            survivorsText += alive.map(p => p.name).join(", ") + "\n";
-            survivorsText += `(残り${alive.length}人)\n`;
+            survivorsText += `${alive.map(p => p.name).join(", ")} (残り${alive.length}人)\n`;
         }
 
         return `
@@ -107,86 +106,72 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
 ${rolesText}
 ${survivorsText}
 ${matesText}
-${actionResultText}
+${resultText}
 
-【ゲームログ】
+【ログ】
 ${logsText}
-
 ${chatText}
 
-【あなたの振る舞い方】
-1. **建設的かつ優しく**: プレイヤーを励ましつつ、具体的で論理的なアドバイスをしてください。
-2. **振り返りと称賛**: 今日の昼の議論（チャット履歴）を見て、プレイヤーの発言で良かった点は褒め、まずかったかもしれない点（怪しまれる発言、矛盾など）は正直かつ丁寧に指摘してください。
-3. **打開策の提案**: 現状の生存者数や役職内訳を考慮し、明日以降どう動くべきか（誰を疑うべきか、どう弁明すべきか、能力をどう使うべきか）を一緒に考えてください。
-4. **短く的確に**: 長文になりすぎないよう、要点を絞って会話してください。
-5. **メタ発言禁止**: あなたはゲームの世界観に少し寄り添いつつも、冷静な分析官として振る舞ってください。
-
-まずは直近の議論の流れを踏まえて、${playerName}さんへのフィードバックをお願いします。
+建設的かつ優しく、具体的な打開策や振る舞い方を短くアドバイスしてください。メタ発言は控えてください。
 `;
     };
 
-    const handleSendMessage = async () => {
-        if (!input.trim() || isLoading) return;
+    const generateAiResponse = async (userText = null) => {
+        if (!apiKey) {
+            // APIキーがない場合のエラーメッセージ（設定UIへの誘導は削除）
+            setMessages(prev => [...prev, { 
+                id: Date.now(), 
+                text: "APIキーが設定されていません。チャットボット機能は現在利用できません。", 
+                sender: 'system' 
+            }]);
+            return;
+        }
 
-        const userMsg = {
-            id: Date.now(),
-            text: input,
-            sender: 'user',
-            timestamp: new Date()
-        };
-
-        setMessages(prev => [...prev, userMsg]);
-        setInput("");
         setIsLoading(true);
-
         try {
             const systemPrompt = constructSystemPrompt();
-            
-            // 過去のメッセージ履歴を含めてコンテキストを作成（直近10件程度に制限すると良い）
-            // ここでは簡易的にシステムプロンプト＋ユーザーの直近入力とする
-            // 本格的には messages 配列を整形して API に渡す
-            
-            const payload = {
-                contents: [{ 
-                    parts: [{ text: `
-${systemPrompt}
-
-【これまでの会話】
-${messages.map(m => `${m.sender === 'user' ? 'プレイヤー' : 'AI'}: ${m.text}`).join('\n')}
-
-プレイヤー: ${input}
-AI:` }] 
-                }]
-            };
+            let promptContent = systemPrompt + "\n\n【会話履歴】\n";
+            messages.filter(m => m.sender !== 'system').forEach(m => {
+                promptContent += `${m.sender === 'user' ? 'プレイヤー' : 'AI'}: ${m.text}\n`;
+            });
+            if (userText) promptContent += `プレイヤー: ${userText}\nAI:`;
+            else promptContent += `AI (最初のアドバイス):`;
 
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ contents: [{ parts: [{ text: promptContent }] }] })
             });
 
-            const data = await response.json();
-            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "すみません、少し考えがまとまりませんでした。もう一度聞いてもらえますか？";
+            if (!response.ok) {
+                if (response.status === 403) throw new Error("APIキーが無効、またはアクセス権限がありません(403)");
+                throw new Error(`API Error: ${response.status}`);
+            }
 
-            const aiMsg = {
-                id: Date.now() + 1,
-                text: aiText,
-                sender: 'ai',
-                timestamp: new Date()
-            };
-            setMessages(prev => [...prev, aiMsg]);
+            const data = await response.json();
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "思考がまとまりませんでした。";
+
+            setMessages(prev => [...prev, { id: Date.now()+1, text: aiText, sender: 'ai', timestamp: new Date() }]);
 
         } catch (error) {
             console.error("Gemini Error:", error);
-            setMessages(prev => [...prev, {
-                id: Date.now() + 1,
-                text: "通信エラーが発生しました。少し時間を置いてから再度お試しください。",
-                sender: 'ai',
-                timestamp: new Date()
+            setMessages(prev => [...prev, { 
+                id: Date.now()+1, 
+                text: `エラーが発生しました: ${error.message}`, 
+                sender: 'system', 
+                timestamp: new Date() 
             }]);
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleSendMessage = async () => {
+        if (!input.trim() || isLoading) return;
+        const userMsg = { id: Date.now(), text: input, sender: 'user', timestamp: new Date() };
+        setMessages(prev => [...prev, userMsg]);
+        setInput("");
+        await generateAiResponse(input);
     };
 
     const handleKeyDown = (e) => {
@@ -199,47 +184,67 @@ AI:` }]
     return (
         <div className="flex flex-col h-full bg-gray-900/80 rounded-2xl border border-indigo-500/30 overflow-hidden shadow-xl">
             {/* ヘッダー */}
-            <div className="p-3 bg-indigo-900/40 border-b border-indigo-500/30 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                    <Sparkles size={18} className="text-indigo-400 animate-pulse"/>
-                    <span className="font-bold text-indigo-100 text-sm">Gemini Strategy Coach</span>
+            <div className="p-3 bg-indigo-900/40 border-b border-indigo-500/30 flex flex-col gap-2 shrink-0">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Sparkles size={18} className="text-indigo-400 animate-pulse"/>
+                        <span className="font-bold text-indigo-100 text-sm">Gemini AI Chat</span>
+                    </div>
+                    <div className="text-[10px] text-indigo-300 bg-indigo-950/50 px-2 py-1 rounded border border-indigo-500/20">
+                        Powered by Google AI
+                    </div>
                 </div>
-                <div className="text-[10px] text-indigo-300 bg-indigo-950/50 px-2 py-1 rounded border border-indigo-500/20">
-                    Powered by Google AI
+                
+                <div className="flex items-start gap-1.5 bg-indigo-950/30 p-2 rounded-lg border border-indigo-500/10">
+                    <Info size={14} className="text-indigo-400 mt-0.5 shrink-0"/>
+                    <p className="text-[10px] text-indigo-200 leading-relaxed">
+                        役職チームがそれぞれチャットを行っている可能性があるため、そのカモフラージュとしてAIと会話を行ってください。
+                    </p>
                 </div>
             </div>
 
-            {/* チャットエリア */}
+            {/* チャットエリア - 吹き出しを廃止し、ログ形式に変更 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/20">
-                {messages.length === 0 && (
-                    <div className="text-center text-gray-500 text-xs mt-10">
-                        <p>ゲームの状況に合わせてアドバイスします。</p>
-                        <p>気軽に話しかけてください。</p>
-                    </div>
-                )}
-                
                 {messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`flex max-w-[85%] ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'} gap-2`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.sender === 'user' ? 'bg-gray-700 border-gray-600' : 'bg-indigo-900 border-indigo-500'}`}>
-                                {msg.sender === 'user' ? <User size={16} className="text-gray-300"/> : <Cpu size={16} className="text-indigo-300"/>}
+                    <div key={msg.id} className="flex gap-3 animate-fade-in group">
+                        {/* アイコン */}
+                        <div className={`mt-1 shrink-0 w-6 h-6 rounded-full flex items-center justify-center border ${
+                            msg.sender === 'user' ? 'bg-gray-700 border-gray-600' : 
+                            msg.sender === 'system' ? 'bg-red-900 border-red-700' : 
+                            'bg-indigo-900 border-indigo-500'
+                        }`}>
+                            {msg.sender === 'user' ? <User size={12} className="text-gray-300"/> : 
+                             msg.sender === 'system' ? <Info size={12} className="text-red-300"/> : 
+                             <Cpu size={12} className="text-indigo-300"/>}
+                        </div>
+                        
+                        {/* テキストコンテンツ（左寄せ） */}
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2 mb-0.5">
+                                <span className={`text-[10px] font-bold ${
+                                    msg.sender === 'user' ? 'text-gray-400' : 
+                                    msg.sender === 'system' ? 'text-red-400' : 
+                                    'text-indigo-300'
+                                }`}>
+                                    {msg.sender === 'user' ? playerName : msg.sender === 'system' ? 'SYSTEM' : 'Gemini'}
+                                </span>
+                                <span className="text-[9px] text-gray-600">
+                                    {msg.timestamp ? msg.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
+                                </span>
                             </div>
-                            <div className={`p-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
-                                msg.sender === 'user' 
-                                ? 'bg-gray-800 text-gray-100 rounded-tr-none border border-gray-700' 
-                                : 'bg-indigo-950/60 text-indigo-100 rounded-tl-none border border-indigo-500/30'
-                            }`}>
+                            <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
                                 {msg.text}
                             </div>
                         </div>
                     </div>
                 ))}
+                
                 {isLoading && (
-                    <div className="flex justify-start">
-                        <div className="flex items-center gap-2 bg-indigo-950/30 p-3 rounded-2xl rounded-tl-none border border-indigo-500/20">
-                            <LoaderDots />
-                            <span className="text-xs text-indigo-400">AIが思考中...</span>
+                    <div className="flex gap-3 animate-pulse opacity-70">
+                        <div className="mt-1 shrink-0 w-6 h-6 rounded-full bg-indigo-900/50 border border-indigo-500/30 flex items-center justify-center">
+                            <Cpu size={12} className="text-indigo-400"/>
                         </div>
+                        <div className="text-xs text-indigo-400 flex items-center h-6">考え中...</div>
                     </div>
                 )}
                 <div ref={messagesEndRef} />
@@ -264,19 +269,7 @@ AI:` }]
                         <Send size={16} />
                     </button>
                 </div>
-                <div className="text-[10px] text-gray-500 text-center mt-2">
-                    AIは誤った情報を生成する可能性があります。最終判断はあなた自身で行ってください。
-                </div>
             </div>
         </div>
     );
 };
-
-// ローディングアニメーション用コンポーネント
-const LoaderDots = () => (
-    <div className="flex space-x-1">
-        <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-        <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-        <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-    </div>
-);

@@ -524,8 +524,10 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         </div>
     );
     
-    if (displayPhase === 'countdown') return <><Notification {...notificationLocal} onClose={() => setNotificationLocal(null)} /><CountdownScreen roomCode={roomCode} matchId={room.matchId} /></>;
-    if (displayPhase === 'role_reveal') return <><Notification {...notificationLocal} onClose={() => setNotificationLocal(null)} /><RoleRevealScreen role={myRole} teammates={teammates || []} /></>;
+    // 修正: カウントダウン画面ではNotificationを表示しない（displayPhase === 'countdown' の条件分岐）
+    if (displayPhase === 'countdown') return <CountdownScreen roomCode={roomCode} matchId={room.matchId} />;
+    // 修正: 役職紹介画面（RoleRevealScreen）表示時のNotificationを削除
+    if (displayPhase === 'role_reveal') return <RoleRevealScreen role={myRole} teammates={teammates || []} />;
 
     const isNight = displayPhase?.startsWith('night');
     const isDay = displayPhase?.startsWith('day');
@@ -533,11 +535,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     
     // 賢狼(wise_wolf)を追加
     const isSpecialRole = ['werewolf', 'greatwolf', 'wise_wolf', 'seer', 'sage', 'knight', 'trapper', 'detective', 'medium', 'assassin'].includes(myRole);
-    // 妖狐とてるてる坊主は特殊なパネル（Gemini Chat）を表示 -> 削除し、特別なアクションがない役職すべてに表示
-    // const isGeminiRole = ['fox', 'teruteru'].includes(myRole);
     
     const showActionPanel = !isDead && isSpecialRole;
-    // const showGeminiPanel = !isDead && isGeminiRole; // 古い定義
     // 修正: 夜のアクションがない役職すべてにGeminiを表示
     const showGeminiPanel = !isDead && !isSpecialRole;
     
