@@ -30,13 +30,13 @@ export const SurvivorsList = ({ players }) => {
     return (
         <div className="flex flex-col h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
             {/* ヘッダー */}
-            <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex flex-col gap-3 shrink-0">
+            <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex flex-col gap-2 md:gap-3 shrink-0">
                 <div className="flex items-center justify-between">
-                    <span className="font-bold text-gray-200 flex items-center gap-2 text-sm">
+                    <span className="font-bold text-gray-200 flex items-center gap-2 text-sm md:text-base">
                         <Users size={16} className="text-blue-400"/> プレイヤーリスト
                     </span>
                     <span className="bg-black/30 px-2 py-1 rounded text-xs font-mono font-bold text-gray-300">
-                        Alive: <span className="text-green-400 text-lg">{alivePlayers.length}</span> / {participants.length}
+                        Alive: <span className="text-green-400 text-base md:text-lg">{alivePlayers.length}</span> / {participants.length}
                     </span>
                 </div>
 
@@ -44,29 +44,29 @@ export const SurvivorsList = ({ players }) => {
                 <div className="flex bg-black/30 rounded-lg p-1 border border-gray-700 gap-1">
                     <button 
                         onClick={() => setViewMode('survivor')}
-                        className={`flex-1 py-1.5 rounded-md text-xs font-bold flex items-center justify-center gap-1 transition ${viewMode === 'survivor' ? 'bg-green-900/60 text-green-200 shadow border border-green-500/30' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`flex-1 py-1.5 rounded-md text-[10px] md:text-xs font-bold flex items-center justify-center gap-1 transition ${viewMode === 'survivor' ? 'bg-green-900/60 text-green-200 shadow border border-green-500/30' : 'text-gray-500 hover:text-gray-300'}`}
                     >
-                        <HeartPulse size={12}/> 生存 ({alivePlayers.length})
+                        <HeartPulse size={12}/> <span className="truncate">生存 ({alivePlayers.length})</span>
                     </button>
                     <button 
                         onClick={() => setViewMode('dead')}
-                        className={`flex-1 py-1.5 rounded-md text-xs font-bold flex items-center justify-center gap-1 transition ${viewMode === 'dead' ? 'bg-red-900/60 text-red-200 shadow border border-red-500/30' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`flex-1 py-1.5 rounded-md text-[10px] md:text-xs font-bold flex items-center justify-center gap-1 transition ${viewMode === 'dead' ? 'bg-red-900/60 text-red-200 shadow border border-red-500/30' : 'text-gray-500 hover:text-gray-300'}`}
                     >
-                        <Skull size={12}/> 死亡 ({deadPlayers.length})
+                        <Skull size={12}/> <span className="truncate">死亡 ({deadPlayers.length})</span>
                     </button>
                     {spectators.length > 0 && (
                         <button 
                             onClick={() => setViewMode('spectator')}
-                            className={`flex-1 py-1.5 rounded-md text-xs font-bold flex items-center justify-center gap-1 transition ${viewMode === 'spectator' ? 'bg-purple-900/60 text-purple-200 shadow border border-purple-500/30' : 'text-gray-500 hover:text-gray-300'}`}
+                            className={`flex-1 py-1.5 rounded-md text-[10px] md:text-xs font-bold flex items-center justify-center gap-1 transition ${viewMode === 'spectator' ? 'bg-purple-900/60 text-purple-200 shadow border border-purple-500/30' : 'text-gray-500 hover:text-gray-300'}`}
                         >
-                            <Eye size={12}/> 観戦 ({spectators.length})
+                            <Eye size={12}/> <span className="truncate">観戦 ({spectators.length})</span>
                         </button>
                     )}
                 </div>
             </div>
             
             {/* リスト表示エリア */}
-            <div className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-black/10">
+            <div className="flex-1 overflow-y-auto p-2 md:p-3 custom-scrollbar bg-black/10">
                 {displayList.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-gray-500 text-sm py-8">
                         <Users size={32} className="mb-2 opacity-50"/>
@@ -115,26 +115,26 @@ export const SurvivorsList = ({ players }) => {
                             }
 
                             return (
-                                <div key={p.id} className={`flex items-center p-2.5 rounded-lg border transition relative overflow-hidden ${bgColor} ${borderColor} ${!isAlive && !isSpectator ? "opacity-70" : ""}`}>
+                                <div key={p.id} className={`flex items-center p-2 md:p-2.5 rounded-lg border transition relative overflow-hidden ${bgColor} ${borderColor} ${!isAlive && !isSpectator ? "opacity-70" : ""}`}>
                                     {/* 準備完了エフェクト（生存者のみ） */}
                                     {isAlive && p.isReady && <div className="absolute inset-0 bg-green-500/5 pointer-events-none"></div>}
                                     
-                                    <div className={`p-2 rounded-full mr-3 shrink-0 ${iconBg} ${iconColor} relative`}>
-                                        <Icon size={18}/>
+                                    <div className={`p-1.5 md:p-2 rounded-full mr-2 md:mr-3 shrink-0 ${iconBg} ${iconColor} relative`}>
+                                        <Icon size={16} className="md:w-[18px] md:h-[18px]"/>
                                         {!online && <div className="absolute -bottom-1 -right-1 bg-gray-900 rounded-full p-0.5 border border-gray-700"><WifiOff size={10} className="text-red-500"/></div>}
                                     </div>
                                     
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-0.5">
-                                            <span className={`text-sm font-bold truncate ${isVanished || (isDead && !isSpectator) ? "text-gray-500 line-through" : "text-gray-200"}`}>{p.name || '不明'}</span>
-                                            {isAlive && p.isReady && <span className="text-[10px] bg-green-900/30 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 flex items-center gap-0.5 shrink-0"><Check size={8}/> 準備OK</span>}
+                                            <span className={`text-xs md:text-sm font-bold truncate ${isVanished || (isDead && !isSpectator) ? "text-gray-500 line-through" : "text-gray-200"}`}>{p.name || '不明'}</span>
+                                            {isAlive && p.isReady && <span className="text-[9px] md:text-[10px] bg-green-900/30 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 flex items-center gap-0.5 shrink-0"><Check size={8}/> 準備OK</span>}
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-gray-500">
+                                            <span className="text-[9px] md:text-[10px] text-gray-500">
                                                 {isSpectator ? "観戦中" : isVanished ? "追放済み" : isDead ? "死亡" : "生存中"}
                                             </span>
                                             {/* 観戦者以外かつ死亡の場合のみDEADタグを表示 */}
-                                            {isDead && !isSpectator && <span className="text-[9px] text-red-400 font-bold border border-red-900/50 px-1.5 py-0.5 rounded bg-red-950/30">DEAD</span>}
+                                            {isDead && !isSpectator && <span className="text-[8px] md:text-[9px] text-red-400 font-bold border border-red-900/50 px-1.5 py-0.5 rounded bg-red-950/30">DEAD</span>}
                                         </div>
                                     </div>
                                 </div>

@@ -90,7 +90,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     const isDead = myPlayer?.status === 'dead' || myPlayer?.status === 'vanished' || myPlayer?.isSpectator;
     const isSpectator = myPlayer?.isSpectator;
 
-    const showNotify = (msg, type = "info", duration = 2000) => setNotificationLocal({ message: msg, type, duration });
+    // 通知表示関数（空メッセージは無視、デフォルト3秒）
+    const showNotify = (msg, type = "info", duration = 3000) => {
+        if (!msg) return;
+        setNotificationLocal({ message: msg, type, duration });
+    };
 
     // 表示用プレイヤー情報の生成
     const displayPlayers = useMemo(() => {
@@ -119,7 +123,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         if (room?.notificationEvent) {
             const evt = room.notificationEvent;
             const key = `${evt.timestamp?.seconds}_${evt.message}`;
-            if (lastNotificationRef.current !== key) {
+            // メッセージが存在する場合のみ通知
+            if (evt.message && lastNotificationRef.current !== key) {
                 showNotify(evt.message, "info", 4000);
                 lastNotificationRef.current = key;
             }
@@ -519,8 +524,10 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         </div>
     );
     
-    if (displayPhase === 'countdown') return <><Notification {...notificationLocal} onClose={() => setNotificationLocal(null)} /><CountdownScreen roomCode={roomCode} matchId={room.matchId} /></>;
-    if (displayPhase === 'role_reveal') return <><Notification {...notificationLocal} onClose={() => setNotificationLocal(null)} /><RoleRevealScreen role={myRole} teammates={teammates || []} /></>;
+    // 修正: カウントダウン画面ではNotificationを表示しない（displayPhase === 'countdown' の条件分岐）
+    if (displayPhase === 'countdown') return <CountdownScreen roomCode={roomCode} matchId={room.matchId} />;
+    // 修正: 役職紹介画面（RoleRevealScreen）表示時のNotificationを削除
+    if (displayPhase === 'role_reveal') return <RoleRevealScreen role={myRole} teammates={teammates || []} />;
 
     const isNight = displayPhase?.startsWith('night');
     const isDay = displayPhase?.startsWith('day');
@@ -528,11 +535,10 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     
     // 賢狼(wise_wolf)を追加
     const isSpecialRole = ['werewolf', 'greatwolf', 'wise_wolf', 'seer', 'sage', 'knight', 'trapper', 'detective', 'medium', 'assassin'].includes(myRole);
-    // 妖狐とてるてる坊主は特殊なパネル（Gemini Chat）を表示
-    const isGeminiRole = ['fox', 'teruteru'].includes(myRole);
     
     const showActionPanel = !isDead && isSpecialRole;
-    const showGeminiPanel = !isDead && isGeminiRole;
+    // 修正: 夜のアクションがない役職すべてにGeminiを表示
+    const showGeminiPanel = !isDead && !isSpecialRole;
     
     const teamChatTitle = ['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) ? "人狼チャット" : `${ROLE_DEFINITIONS[myRole || 'citizen']?.name || myRole}チャット`;
     // 役職チャット表示可能者（妖狐・呪われし者・てるてる坊主・狂人は不可）
@@ -554,7 +560,10 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         myRole,
         logs: visibleLogsForAi, // 公平性を保つためフィルタリング済みログを渡す
         chatHistory: messages,
-        roleSettings: room?.roleSettings // 役職配分を追加
+        roleSettings: room?.roleSettings, // 役職配分
+        teammates: teammates, // 仲間の情報
+        lastActionResult: lastActionResult, // 夜のアクション結果
+        players: players // 全プレイヤー情報
     };
 
     return (
@@ -571,9 +580,9 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
             {showKickModal && (
                 <InfoModal title="プレイヤー追放" onClose={() => setShowKickModal(false)}>
                     <div className="space-y-2">
-                        {players.filter(p => p.status === 'alive').map(p => (
+                        {players.filter(p => p.status === 'alive' || (p.isSpectator && p.status !== 'vanished')).map(p => (
                             <div key={p.id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
-                                <span>{p.name}</span>
+                                <span>{p.name} {p.isSpectator && <span className="text-xs text-gray-500">(観戦者)</span>}</span>
                                 {p.id !== user.uid && (
                                     <button onClick={() => confirmKickPlayer(p.id)} className="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-1">
                                         <UserMinus size={12}/> 追放
@@ -637,7 +646,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 </div>
             </header>
 
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 lg:min-h-0 lg:overflow-hidden overflow-y-auto">
+            {/* スマホ対応: 縦積みレイアウト、スクロール可能、高さ調整 */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0 overflow-y-auto lg:overflow-hidden">
                 <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-auto shrink-0">
                     {isDead || isSpectator ? <DeadPlayerInfoPanel players={displayPlayers} /> : <MiniRoleCard role={myRole} teammates={teammates || []} originalRole={originalRole} />}
                     
@@ -649,7 +659,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                     
                     {!isDead && !isSpectator && (
-                        <div className="bg-black/20 p-3 rounded-xl overflow-y-auto custom-scrollbar border border-white/5 lg:flex-1 h-48 lg:h-auto min-h-0">
+                        <div className="bg-black/20 p-3 rounded-xl overflow-y-auto custom-scrollbar border border-white/5 lg:flex-1 h-32 lg:h-auto min-h-0">
                             <p className="text-xs text-gray-500 font-bold mb-2 flex items-center gap-1 sticky top-0 bg-black/20 p-1 backdrop-blur"><History size={12}/> チャットアーカイブ</p>
                             <div className="flex flex-wrap gap-2">{archiveButtons.map((btn, i) => (<button key={i} onClick={() => handleOpenArchive(btn.day, btn.phase)} className="bg-gray-800 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-700 transition">{btn.label}</button>))}</div>
                         </div>
@@ -660,19 +670,19 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                 </div>
 
-                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[80vh] min-h-[500px]">
+                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[50vh] min-h-[400px]">
                     {isDead || isSpectator ? (
                         <div className="h-full flex flex-col gap-4 min-h-0">
                             {/* 霊界チャット：対面モードでも利用可能 */}
-                            <div className="flex-1 border border-purple-500/30 rounded-2xl overflow-hidden min-h-0">
+                            <div className="flex-1 border border-purple-500/30 rounded-2xl overflow-hidden min-h-0 flex flex-col">
                                  <ChatPanel messages={graveMessages} user={user} teammates={[]} myPlayer={safeMyPlayer} onSendMessage={handleSendGraveMessage} title="霊界チャット" disableFilter={true} />
                             </div>
                             
                             {/* 生存者チャット（閲覧用）：対面モードのときは非表示 */}
                             {!inPersonMode && (
-                                <div className="h-1/3 border border-gray-700 rounded-2xl overflow-hidden relative shrink-0">
+                                <div className="h-1/3 border border-gray-700 rounded-2xl overflow-hidden relative shrink-0 flex flex-col">
                                      <div className="absolute top-0 right-0 bg-gray-800/80 px-3 py-1 text-sm font-bold text-gray-300 z-10 border-bl rounded-bl-xl shadow-md flex items-center gap-2"><Eye size={14} className="text-blue-400"/> 生存者チャット (閲覧のみ)</div>
-                                     <div className="h-full overflow-hidden opacity-80 hover:opacity-100 transition">
+                                     <div className="h-full overflow-hidden opacity-80 hover:opacity-100 transition flex flex-col">
                                           <ChatPanel messages={messages} user={{uid: 'dummy'}} teammates={[]} myPlayer={{...safeMyPlayer, status: 'alive'}} title="" readOnly={true} disableFilter={true} />
                                      </div>
                                 </div>
@@ -694,7 +704,6 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                     setMessages={setGeminiMessages} 
                                 />
                             ) : (
-                                // 狂人など、アクションパネルもGeminiパネルも表示しない役職
                                 <div className="h-full flex items-center justify-center text-gray-500 bg-gray-900/30 rounded-2xl border border-gray-800">
                                     <p>今夜は特にアクションはありません。</p>
                                 </div>
@@ -713,7 +722,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                 </div>
 
-                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[60vh] min-h-[400px]">
+                <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[40vh] min-h-[300px]">
                     {!isDead && !isSpectator && (
                         <div className="flex gap-2 shrink-0 lg:hidden">
                             <button onClick={() => setShowRoleDist(true)} className="flex-1 p-3 bg-gray-800 rounded-xl border border-gray-700 hover:bg-gray-700 transition flex items-center justify-center gap-2 font-bold text-sm"><Settings className="text-blue-400" size={16}/> 配分</button>

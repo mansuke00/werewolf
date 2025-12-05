@@ -1,187 +1,275 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Send, Info, Loader } from 'lucide-react';
+import { Send, Sparkles, User, Cpu, Info } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../config/firebase';
-import { ROLE_DEFINITIONS } from '../../constants/gameData';
+import { db } from '../../config/firebase.js';
+import { ROLE_DEFINITIONS } from '../../constants/gameData.js';
 
-// 夜のアクションが無い役職や、カモフラージュが必要な役職向けのチャット
 export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, currentDay, messages, setMessages }) => {
-    // 親コンポーネントから messages, setMessages を受け取ることで履歴を維持する
-    
     const [input, setInput] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [apiKey, setApiKey] = useState(null);
-    const [keyError, setKeyError] = useState(false);
-    const scrollRef = useRef(null);
-    
-    // 日付変更検知用
-    const [lastDay, setLastDay] = useState(0);
+    const [isLoading, setIsLoading] = useState(false);
+    const [apiKey, setApiKey] = useState("");
+    const messagesEndRef = useRef(null);
+    const hasInitialized = useRef(false);
 
-    // APIキー取得
+    // 自動スクロール
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages, isLoading]);
+
+    // APIキーの取得（Firestore または LocalStorage）
+    // 設定UIは削除しましたが、裏側での取得ロジックは維持します
     useEffect(() => {
         const fetchApiKey = async () => {
+            // 1. LocalStorageを確認（以前入力されたものがあれば）
+            const localKey = localStorage.getItem('gemini_api_key');
+            if (localKey) {
+                setApiKey(localKey);
+                return;
+            }
+
+            // 2. Firestoreを確認（管理者が設定した場合）
             try {
                 const docRef = doc(db, 'system', 'settings');
                 const docSnap = await getDoc(docRef);
-                
                 if (docSnap.exists() && docSnap.data().geminiApiKey) {
                     setApiKey(docSnap.data().geminiApiKey);
-                } else {
-                    console.error("Gemini API Key not found.");
-                    setKeyError(true);
-                    // エラーメッセージは、まだ履歴がない場合のみ追加
-                    if (messages && messages.length === 0) {
-                        setMessages(prev => [...prev, { sender: 'gemini', text: "（システムエラー：APIキーの設定が見つかりません。）" }]);
-                    }
                 }
             } catch (e) {
-                console.error("Error fetching API key:", e);
-                setKeyError(true);
+                console.error("Failed to fetch API key:", e);
             }
         };
         fetchApiKey();
     }, []);
 
-    // 自動スクロール
-    useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-    // 初期化および自動アドバイスの制御
+    // 初回メッセージ生成（APIキー取得後かつ未実行の場合のみ）
     useEffect(() => {
-        if (!apiKey) return;
+        if (!hasInitialized.current && messages.length === 0 && apiKey) {
+            hasInitialized.current = true;
+            generateAiResponse();
+        }
+    }, [apiKey]);
 
-        // 対面モード：履歴が空の場合のみ初期メッセージを表示（こちらは待機）
+    const constructSystemPrompt = () => {
+        const { myRole, logs, chatHistory, roleSettings, teammates, lastActionResult, players } = gameContext;
+        
+        // ログをテキスト化
+        const logsText = logs.map(l => `[${l.phase}] ${l.text}`).join("\n");
+        
+        // チャット履歴
+        let chatText = "【生存者チャット履歴】\n";
         if (inPersonMode) {
-            if (messages.length === 0) {
-                setMessages([{ sender: 'gemini', text: `こんにちは、${playerName}さん！待機時間にお話ししましょう。` }]);
-            }
+            chatText += "(対面モードのためチャット履歴はありません)\n";
+        } else if (chatHistory && chatHistory.length > 0) {
+            const historyByDay = {};
+            chatHistory.forEach(msg => {
+                const d = msg.day || 1;
+                if (!historyByDay[d]) historyByDay[d] = [];
+                historyByDay[d].push(`${msg.senderName}: ${msg.text}`);
+            });
+            Object.keys(historyByDay).sort((a,b)=>a-b).forEach(day => {
+                chatText += `--- ${day}日目 ---\n`;
+                chatText += historyByDay[day].join("\n") + "\n";
+            });
+        } else {
+            chatText += "(履歴なし)\n";
+        }
+
+        // ゲーム情報
+        let rolesText = "【役職配分】\n";
+        if (roleSettings) Object.entries(roleSettings).forEach(([r, c]) => { if(c>0) rolesText += `${ROLE_DEFINITIONS[r]?.name||r}: ${c}人\n`; });
+
+        let matesText = "【仲間】\n";
+        if (teammates?.length) matesText += teammates.map(t => `${t.name} (${ROLE_DEFINITIONS[t.role]?.name||t.role})`).join(", ") + "\n";
+        else matesText += "なし\n";
+
+        let resultText = "【直近のアクション結果】\n";
+        if (lastActionResult?.length) resultText += lastActionResult.map(c => `${c.label}: ${c.value}`).join("\n") + "\n";
+        else resultText += "なし\n";
+
+        let survivorsText = "【生存者】\n";
+        if (players) {
+            const alive = players.filter(p => p.status === 'alive');
+            survivorsText += `${alive.map(p => p.name).join(", ")} (残り${alive.length}人)\n`;
+        }
+
+        return `
+あなたは人狼ゲームの戦略アドバイザーAIです。
+プレイヤー「${playerName}」の専属コーチとして、勝利のために親身になってアドバイスをしてください。
+現在のプレイヤーの役職は「${ROLE_DEFINITIONS[myRole]?.name || myRole}」です。
+
+【ゲーム状況】
+現在のフェーズ: ${currentDay}日目の夜
+${rolesText}
+${survivorsText}
+${matesText}
+${resultText}
+
+【ログ】
+${logsText}
+${chatText}
+
+建設的かつ優しく、具体的な打開策や振る舞い方を短くアドバイスしてください。メタ発言は控えてください。
+`;
+    };
+
+    const generateAiResponse = async (userText = null) => {
+        if (!apiKey) {
+            // APIキーがない場合のエラーメッセージ（設定UIへの誘導は削除）
+            setMessages(prev => [...prev, { 
+                id: Date.now(), 
+                text: "APIキーが設定されていません。チャットボット機能は現在利用できません。", 
+                sender: 'system' 
+            }]);
             return;
         }
 
-        // 対面モードOFF（戦略アドバイザー）：
-        // 日付が変わった、または履歴が空の場合にAIから能動的にアドバイスを開始
-        if (currentDay > lastDay || messages.length === 0) {
-            // 自動実行のトリガー文言（これはAIへの指示として送るが、チャット履歴には表示しない）
-            const triggerPrompt = messages.length === 0
-                ? "ゲーム開始直後です。私の役職と配役に基づき、初日の立ち回りについてアドバイスをください。"
-                : `${currentDay}日目になりました。これまでの議論や状況を踏まえて、今日のアドバイスをください。`;
-            
-            callGemini(triggerPrompt);
-            setLastDay(currentDay);
-        }
-    }, [apiKey, currentDay, inPersonMode, messages.length, lastDay]);
-
-    const callGemini = async (userText) => {
-        if (!apiKey) return;
-        setLoading(true);
-        
-        let systemPrompt = "";
-        
-        if (inPersonMode) {
-            systemPrompt = `
-            あなたは人狼ゲームの待機時間にプレイヤーの話し相手をするAIです。
-            相手のプレイヤー名は「${playerName}」です。
-            呼びかける際は必ず「${playerName}さん」と呼んでください。
-            以下のルールを厳守してください：
-            1. **や##などの装飾記号は一切使用しないでください。
-            2. ゲームの内容や推理には触れず、楽しく雑談してください。
-            3. 常に敬語を使い、相手に関心を持って質問を投げかけてください。
-            4. 回答は極めて簡潔に、80文字以内で返答してください。長文は禁止です。
-            `;
-        } else {
-            // ゲームコンテキストの構築
-            const myRoleName = gameContext?.myRole ? (ROLE_DEFINITIONS[gameContext.myRole]?.name || "不明") : "不明";
-            const chatHistory = (messages || []).map(m => `${m.sender === 'user' ? playerName : 'AI'}: ${m.text}`).join('\n').slice(-1500); 
-            const logs = (gameContext?.logs || []).map(l => l.text).join('\n').slice(-1500);
-            
-            // 役職配分情報のフォーマット作成
-            const roleSettings = gameContext?.roleSettings || {};
-            const roleDistStr = Object.entries(roleSettings)
-                .filter(([_, count]) => count > 0)
-                .map(([key, count]) => `${ROLE_DEFINITIONS[key]?.name || key}: ${count}人`)
-                .join(', ');
-
-            systemPrompt = `
-            あなたは人狼ゲームのアドバイザーAIです。
-            プレイヤー名「${playerName}」さんの陣営が勝つためのアドバイスや立ち回りを教えてください。
-            呼びかける際は必ず「${playerName}さん」と呼んでください。
-            情報は以下の通りです。
-            
-            [${playerName}の役職]: ${myRoleName}
-            [今回の配役（内訳）]: ${roleDistStr}
-            [これまでのチャット会話履歴]:
-            ${chatHistory}
-            [直近のゲームログ（${playerName}が知り得る情報のみ）]:
-            ${logs}
-            
-            以下のルールを厳守してください：
-            1. 提供されたログにない情報（他人の役職や行動結果など）はあなたは絶対に知り得ません。カンニングと思われる発言は厳禁です。
-            2. 建設的かつ丁寧な会話を心がけ、ずっと敬語を使ってください。
-            3. **や##などの装飾記号は一切使用しないでください。
-            4. 回答は極めて簡潔に、短く要点のみを伝えてください。絶対に100文字以内に収めてください。長々とした説明は禁止です。
-            5. 2日目以降のアドバイスは、以前のアドバイスや会話履歴を踏まえて、一貫性のある助言をしてください。
-            `;
-        }
-
-        // 会話履歴の構築
-        const historyContents = messages.map(m => ({
-            role: m.sender === 'user' ? 'user' : 'model',
-            parts: [{ text: m.text }]
-        }));
-
+        setIsLoading(true);
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    contents: [
-                        { role: "user", parts: [{ text: systemPrompt }] }, // システムプロンプトを最初のユーザーメッセージとして送信
-                        ...historyContents, // 過去の履歴を展開
-                        { role: "user", parts: [{ text: userText }] } // 最新のユーザー発言（またはシステムトリガー）
-                    ] 
-                })
+            const systemPrompt = constructSystemPrompt();
+            let promptContent = systemPrompt + "\n\n【会話履歴】\n";
+            messages.filter(m => m.sender !== 'system').forEach(m => {
+                promptContent += `${m.sender === 'user' ? 'プレイヤー' : 'AI'}: ${m.text}\n`;
             });
+            if (userText) promptContent += `プレイヤー: ${userText}\nAI:`;
+            else promptContent += `AI (最初のアドバイス):`;
+
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: promptContent }] }] })
+            });
+
+            if (!response.ok) {
+                if (response.status === 403) throw new Error("APIキーが無効、またはアクセス権限がありません(403)");
+                throw new Error(`API Error: ${response.status}`);
+            }
+
             const data = await response.json();
-            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "申し訳ありません、うまく聞き取れませんでした。";
-            setMessages(prev => [...prev, { sender: 'gemini', text: reply.replace(/[*#]/g, '') }]); // 念のため装飾記号を除去
-        } catch (e) { 
-            console.error(e);
-            setMessages(prev => [...prev, { sender: 'gemini', text: "通信エラーが発生しました。" }]); 
-        } finally { 
-            setLoading(false); 
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "思考がまとまりませんでした。";
+
+            setMessages(prev => [...prev, { id: Date.now()+1, text: aiText, sender: 'ai', timestamp: new Date() }]);
+
+        } catch (error) {
+            console.error("Gemini Error:", error);
+            setMessages(prev => [...prev, { 
+                id: Date.now()+1, 
+                text: `エラーが発生しました: ${error.message}`, 
+                sender: 'system', 
+                timestamp: new Date() 
+            }]);
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const handleSend = (e) => { 
-        e.preventDefault(); 
-        if(!input.trim() || !apiKey) return; 
-        const text = input; 
-        setMessages(prev => [...prev, { sender: 'user', text }]); 
-        setInput(""); 
-        callGemini(text); 
+    const handleSendMessage = async () => {
+        if (!input.trim() || isLoading) return;
+        const userMsg = { id: Date.now(), text: input, sender: 'user', timestamp: new Date() };
+        setMessages(prev => [...prev, userMsg]);
+        setInput("");
+        await generateAiResponse(input);
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
     };
 
     return (
-        <div className="flex flex-col h-full bg-indigo-950/40 backdrop-blur-xl rounded-2xl border border-indigo-500/30 overflow-hidden shadow-2xl relative animate-fade-in">
-            <div className="bg-indigo-900/40 border-b border-indigo-500/20">
-                <div className="p-3 flex items-center justify-between"><span className="font-bold text-indigo-200 flex items-center gap-2"><Sparkles size={16} className="text-yellow-300"/> Gemini AI Chat</span><span className="text-[10px] bg-indigo-800 px-2 py-1 rounded text-indigo-300 border border-indigo-500/30">Advisor</span></div>
-                <div className="bg-indigo-900/30 p-2 px-3 text-[11px] text-indigo-300 border-t border-indigo-500/10 leading-tight flex gap-2 items-start"><Info size={14} className="shrink-0 mt-0.5"/><span>{inPersonMode ? "対面モードのため、雑談相手として機能します。" : "ゲームのアドバイスを行います。AIはあなたの視点での情報しか持ちません。"}</span></div>
+        <div className="flex flex-col h-full bg-gray-900/80 rounded-2xl border border-indigo-500/30 overflow-hidden shadow-xl">
+            {/* ヘッダー */}
+            <div className="p-3 bg-indigo-900/40 border-b border-indigo-500/30 flex flex-col gap-2 shrink-0">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Sparkles size={18} className="text-indigo-400 animate-pulse"/>
+                        <span className="font-bold text-indigo-100 text-sm">Gemini AI Chat</span>
+                    </div>
+                    <div className="text-[10px] text-indigo-300 bg-indigo-950/50 px-2 py-1 rounded border border-indigo-500/20">
+                        Powered by Google AI
+                    </div>
+                </div>
+                
+                <div className="flex items-start gap-1.5 bg-indigo-950/30 p-2 rounded-lg border border-indigo-500/10">
+                    <Info size={14} className="text-indigo-400 mt-0.5 shrink-0"/>
+                    <p className="text-[10px] text-indigo-200 leading-relaxed">
+                        役職チームがそれぞれチャットを行っている可能性があるため、そのカモフラージュとしてAIと会話を行ってください。
+                    </p>
+                </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                {messages.map((msg, i) => (<div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-gray-800 text-gray-200 rounded-tl-none border border-gray-700'}`}>{msg.text}</div></div>))}
-                {loading && <div className="text-xs text-indigo-400 animate-pulse ml-2">Geminiが入力中...</div>}
-                <div ref={scrollRef}></div>
+
+            {/* チャットエリア - 吹き出しを廃止し、ログ形式に変更 */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/20">
+                {messages.map((msg) => (
+                    <div key={msg.id} className="flex gap-3 animate-fade-in group">
+                        {/* アイコン */}
+                        <div className={`mt-1 shrink-0 w-6 h-6 rounded-full flex items-center justify-center border ${
+                            msg.sender === 'user' ? 'bg-gray-700 border-gray-600' : 
+                            msg.sender === 'system' ? 'bg-red-900 border-red-700' : 
+                            'bg-indigo-900 border-indigo-500'
+                        }`}>
+                            {msg.sender === 'user' ? <User size={12} className="text-gray-300"/> : 
+                             msg.sender === 'system' ? <Info size={12} className="text-red-300"/> : 
+                             <Cpu size={12} className="text-indigo-300"/>}
+                        </div>
+                        
+                        {/* テキストコンテンツ（左寄せ） */}
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2 mb-0.5">
+                                <span className={`text-[10px] font-bold ${
+                                    msg.sender === 'user' ? 'text-gray-400' : 
+                                    msg.sender === 'system' ? 'text-red-400' : 
+                                    'text-indigo-300'
+                                }`}>
+                                    {msg.sender === 'user' ? playerName : msg.sender === 'system' ? 'SYSTEM' : 'Gemini'}
+                                </span>
+                                <span className="text-[9px] text-gray-600">
+                                    {msg.timestamp ? msg.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
+                                </span>
+                            </div>
+                            <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
+                                {msg.text}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+                
+                {isLoading && (
+                    <div className="flex gap-3 animate-pulse opacity-70">
+                        <div className="mt-1 shrink-0 w-6 h-6 rounded-full bg-indigo-900/50 border border-indigo-500/30 flex items-center justify-center">
+                            <Cpu size={12} className="text-indigo-400"/>
+                        </div>
+                        <div className="text-xs text-indigo-400 flex items-center h-6">考え中...</div>
+                    </div>
+                )}
+                <div ref={messagesEndRef} />
             </div>
-            <form onSubmit={handleSend} className="p-3 bg-indigo-900/30 flex gap-2">
-                <input 
-                    value={input} 
-                    onChange={e => setInput(e.target.value)} 
-                    disabled={!apiKey || keyError}
-                    className="flex-1 bg-indigo-950/50 border border-indigo-500/30 rounded-xl px-4 py-2 text-white placeholder-indigo-400/50 focus:outline-none focus:border-indigo-400 transition text-sm disabled:opacity-50" 
-                    placeholder={!apiKey ? "システム準備中..." : "メッセージを入力..."}
-                />
-                <button type="submit" disabled={!apiKey || keyError} className="bg-indigo-600 p-2 rounded-xl text-white hover:bg-indigo-500 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                    {(!apiKey && !keyError) ? <Loader className="animate-spin" size={18}/> : <Send size={18}/>}
-                </button>
-            </form>
+
+            {/* 入力エリア */}
+            <div className="p-3 bg-gray-900/90 border-t border-gray-800 shrink-0">
+                <div className="flex gap-2 relative">
+                    <textarea
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="相談内容を入力..."
+                        className="w-full bg-gray-800 text-white rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 border border-gray-700 resize-none h-12 custom-scrollbar"
+                        disabled={isLoading}
+                    />
+                    <button 
+                        onClick={handleSendMessage}
+                        disabled={!input.trim() || isLoading}
+                        className="absolute right-2 top-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                    >
+                        <Send size={16} />
+                    </button>
+                </div>
+            </div>
         </div>
     );
 };

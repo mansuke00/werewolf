@@ -30,15 +30,15 @@ export const RoleDistributionPanel = ({ players, roleSettings }) => {
     return (
         <div className="flex flex-col h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
             <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex items-center justify-between shrink-0">
-                <span className="font-bold text-gray-200 flex items-center gap-2 text-sm">
+                <span className="font-bold text-gray-200 flex items-center gap-2 text-sm md:text-base">
                     <Settings size={16} className="text-blue-400"/> 役職配分設定
                 </span>
                 <span className="bg-black/30 px-2 py-1 rounded text-xs font-mono font-bold text-gray-300">
-                    Total: <span className="text-blue-400 text-lg">{total}</span>
+                    Total: <span className="text-blue-400 text-base md:text-lg">{total}</span>
                 </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-4">
+            <div className="flex-1 overflow-y-auto p-2 md:p-3 custom-scrollbar space-y-3 md:space-y-4">
                 {sections.map(section => {
                     const rolesInGroup = groups[section.key];
                     if (rolesInGroup.length === 0) return null;
@@ -52,15 +52,15 @@ export const RoleDistributionPanel = ({ players, roleSettings }) => {
                             <div className="p-2 gap-2 grid grid-cols-1 bg-black/10">
                                 {rolesInGroup.map(({ key, count, def }) => (
                                     <div key={key} className="flex items-center p-2 rounded-lg border border-gray-700/50 bg-gray-800/40">
-                                        <div className={`p-2 rounded-full bg-black/30 mr-3 ${section.color}`}>
-                                            {React.createElement(def.icon, { size: 18 })}
+                                        <div className={`p-1.5 md:p-2 rounded-full bg-black/30 mr-2 md:mr-3 ${section.color} shrink-0`}>
+                                            {React.createElement(def.icon, { size: 16, className: "md:w-[18px] md:h-[18px]" })}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between">
-                                                <span className="font-bold text-gray-200 text-sm">{def.name}</span>
-                                                <span className="font-mono font-black text-white bg-white/10 px-2 py-0.5 rounded text-xs">x{count}</span>
+                                                <span className="font-bold text-gray-200 text-xs md:text-sm truncate">{def.name}</span>
+                                                <span className="font-mono font-black text-white bg-white/10 px-1.5 py-0.5 md:px-2 rounded text-[10px] md:text-xs shrink-0">x{count}</span>
                                             </div>
-                                            <p className="text-[10px] text-gray-500 leading-tight mt-0.5 truncate">{def.desc}</p>
+                                            <p className="text-[9px] md:text-[10px] text-gray-500 leading-tight mt-0.5 truncate">{def.desc}</p>
                                         </div>
                                     </div>
                                 ))}

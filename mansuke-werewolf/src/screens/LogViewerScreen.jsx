@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc, Hash, Filter, RefreshCw, Trash2 } from 'lucide-react';
-import { collection, query, where, getDocs, orderBy, Timestamp, collectionGroup, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, collectionGroup, getDoc, doc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
 import { getMillis } from '../utils/helpers.js';
@@ -21,12 +21,13 @@ export const LogViewerScreen = ({ setView }) => {
     const [showDetail, setShowDetail] = useState(false); // 詳細表示モードかどうか
     const [error, setError] = useState("");
 
+    // タブ管理（詳細画面のスマホ用）
+    const [detailTab, setDetailTab] = useState('info'); // 'info' | 'chat' | 'log'
+
     // 初期化時に今日の日付をセット
     useEffect(() => {
-        const today = new Date().toISOString().split('T')[0];
-        setSearchDate(today);
-        // 初期表示でリストを読み込む
-        handleSearchButton(today); 
+        // 初期表示でリストを読み込む（引数なしで全件検索扱い）
+        handleSearchButton(null); 
     }, []);
 
     const handleClearAll = () => {
@@ -37,7 +38,7 @@ export const LogViewerScreen = ({ setView }) => {
         setError("");
     };
 
-    // 統合検索ボタンのハンドラ（AND検索に対応）
+    // 統合検索ボタンのハンドラ
     const handleSearchButton = async (initialDate = null) => {
         setLoading(true);
         setError("");
@@ -50,9 +51,28 @@ export const LogViewerScreen = ({ setView }) => {
             if (matchIdInput.trim()) {
                 await searchByMatchId(matchIdInput.trim());
             } else {
+                // 条件なしの場合は直近のデータを取得（負荷対策のため50件制限）
                 const targetDate = initialDate || searchDate;
                 const hasNameSearch = !!searchName.trim();
                 const hasDateSearch = !!targetDate;
+
+                if (!hasNameSearch && !hasDateSearch) {
+                    const recentQuery = query(
+                        collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'),
+                        orderBy('createdAt', 'desc'),
+                        limit(50)
+                    );
+                    const snapshot = await getDocs(recentQuery);
+                    const results = snapshot.docs
+                        .map(d => ({ id: d.id, ...d.data() }))
+                        .filter(d => ['finished', 'closed', 'aborted'].includes(d.status) && d.matchId);
+                    
+                    if (results.length === 0) setError("データが見つかりませんでした。");
+                    else setMatchList(results);
+                    
+                    setLoading(false);
+                    return;
+                }
 
                 // 並列処理用のPromise配列
                 const promises = [];
@@ -106,32 +126,29 @@ export const LogViewerScreen = ({ setView }) => {
 
                 let finalResults = [];
 
-                // 3. AND条件による結合
+                // 3. 結合条件（ANDではなくOR的な挙動、または片方のみの場合に対応）
                 if (hasNameSearch && hasDateSearch) {
-                    // 名前検索でヒットしたIDに含まれる日付検索結果のみを残す
+                    // 両方指定されている場合はAND検索（絞り込み）
                     finalResults = dateResults.filter(room => nameMatchIds.has(room.id));
                 } else if (hasNameSearch) {
-                    // 名前検索のみの場合、IDリストから部屋詳細を取得
-                    const roomPromises = Array.from(nameMatchIds).map(id => getDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', id)));
-                    const roomSnaps = await Promise.all(roomPromises);
-                    finalResults = roomSnaps
-                        .filter(s => s.exists() && ['finished', 'closed', 'aborted'].includes(s.data().status))
-                        .map(s => ({ id: s.id, ...s.data() }));
+                    // 名前検索のみ
+                    if (nameMatchIds.size > 0) {
+                        // IDリストから部屋詳細を取得（最大20件程度に制限しないと大量リードになるため注意が必要だが、ここでは一旦そのまま）
+                        // Firestoreのin句は10個までなので、forループで取得
+                        const idArray = Array.from(nameMatchIds);
+                        // 最新のものから取得したいが、IDだけでは順序不明。IDリストが多い場合は全取得はコストが高い。
+                        // ここでは簡易的に、IDリストの件数が多い場合は警告を出すか、制限する
+                        const limitedIds = idArray.slice(0, 20); // 20件制限
+                        
+                        const roomPromises = limitedIds.map(id => getDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', id)));
+                        const roomSnaps = await Promise.all(roomPromises);
+                        finalResults = roomSnaps
+                            .filter(s => s.exists() && ['finished', 'closed', 'aborted'].includes(s.data().status))
+                            .map(s => ({ id: s.id, ...s.data() }));
+                    }
                 } else if (hasDateSearch) {
                     // 日付検索のみ
                     finalResults = dateResults;
-                } else {
-                    // 条件なしの場合は直近のデータを取得（負荷対策のため制限付き）
-                    const recentQuery = query(
-                        collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'), 
-                        orderBy('createdAt', 'desc'),
-                        // limit(20) // 必要に応じて制限
-                    );
-                    // ここでは実装を省略し、日付指定を促すエラーにするか、全件検索を許容するか判断が必要
-                    // 今回はリストを空にしてエラーメッセージを表示
-                    setError("検索条件を指定してください（日時またはプレイヤー名）");
-                    setLoading(false);
-                    return;
                 }
 
                 // ソート
@@ -208,6 +225,7 @@ export const LogViewerScreen = ({ setView }) => {
             chatMessages: chatMessages
         });
         setShowDetail(true);
+        setDetailTab('info'); // デフォルトタブ
         setLoading(false);
     };
 
@@ -248,14 +266,23 @@ export const LogViewerScreen = ({ setView }) => {
              const isCitizenWin = room.winner === 'citizen';
              const isWerewolfWin = room.winner === 'werewolf';
              const isFoxWin = room.winner === 'fox';
+             const isTeruteruWin = room.teruteruWon === true;
              
              let label = "引き分け";
              let colorClass = "bg-[#1a1d26] border-gray-700 text-gray-400";
              let Icon = Trophy;
 
-             if (isCitizenWin) { label = "市民陣営 勝利"; colorClass = "bg-[#1a2620] border-green-500/30 text-green-400"; }
-             if (isWerewolfWin) { label = "人狼陣営 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/30 text-red-400"; Icon = Trophy; }
-             if (isFoxWin) { label = "妖狐 勝利"; colorClass = "bg-[#2a201a] border-orange-500/30 text-orange-400"; }
+             // てるてる坊主が勝利している場合、勝利陣営カードのデザインも赤色ベース（目立つ色）にするなどの対応を行う
+             if (isTeruteruWin) {
+                 if (isCitizenWin) { label = "市民陣営 ＋ てるてる"; colorClass = "bg-gradient-to-r from-green-900/50 to-red-900/50 border-red-500/50 text-white"; }
+                 else if (isWerewolfWin) { label = "人狼陣営 ＋ てるてる"; colorClass = "bg-[#2a1a1a] border-red-500/50 text-red-400"; }
+                 else if (isFoxWin) { label = "妖狐 ＋ てるてる"; colorClass = "bg-gradient-to-r from-orange-900/50 to-red-900/50 border-red-500/50 text-orange-200"; }
+                 else { label = "てるてる坊主 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/50 text-red-400"; }
+             } else {
+                 if (isCitizenWin) { label = "市民陣営 勝利"; colorClass = "bg-[#1a2620] border-green-500/30 text-green-400"; }
+                 if (isWerewolfWin) { label = "人狼陣営 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/30 text-red-400"; Icon = Trophy; }
+                 if (isFoxWin) { label = "妖狐 勝利"; colorClass = "bg-[#2a201a] border-orange-500/30 text-orange-400"; }
+             }
 
              return (
                  <div className={`w-full py-4 rounded-xl border font-bold flex items-center justify-center gap-2 tracking-wider ${colorClass}`}>
@@ -288,29 +315,28 @@ export const LogViewerScreen = ({ setView }) => {
                 
                 {!showDetail ? (
                     // === リスト表示モード ===
-                    <>
+                    // スマホでは縦積み、PCでは横並び
+                    <div className="flex flex-col md:flex-row gap-4 w-full h-full min-h-0">
                         {/* 左側: 検索パネル */}
-                        <div className="w-[30%] min-w-[300px] max-w-sm flex flex-col gap-4 bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl p-6 relative shrink-0">
+                        <div className="w-full md:w-[30%] md:min-w-[300px] md:max-w-sm flex flex-col gap-4 bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl p-4 md:p-6 relative shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-50"></div>
                             
-                            <div className="mb-2">
-                                <h3 className="text-xl font-black text-white flex items-center gap-2 mb-1"><Search size={24} className="text-blue-400"/> SEARCH</h3>
-                                <p className="text-xs text-gray-500">条件を指定して過去ログを検索</p>
+                            <div className="mb-2 shrink-0">
+                                <h3 className="text-lg md:text-xl font-black text-white flex items-center gap-2 mb-1"><Search size={20} md:size={24} className="text-blue-400"/> SEARCH</h3>
+                                <p className="text-[10px] md:text-xs text-gray-500">条件を指定して過去ログを検索</p>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 pt-4">
-                                
-                                {/* ID検索エリア - mtを大きくしてタグのはみ出しを防止 */}
+                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 md:space-y-6 pt-2">
+                                {/* ID検索エリア */}
                                 <div className="bg-gray-800/40 p-4 pt-6 rounded-2xl border border-gray-700/50 relative mt-2">
                                     <div className="absolute -top-3 left-3 bg-gray-900 px-2 text-[10px] font-bold text-blue-400 border border-blue-500/30 rounded-full flex items-center gap-1">
                                         <Hash size={10}/> ID指定で検索
                                     </div>
                                     <div className="space-y-2 mt-1">
-                                        <label className="text-xs text-gray-400 font-bold flex items-center gap-1">試合ID (完全一致)</label>
                                         <input 
                                             type="text" 
                                             placeholder="例: aBc123" 
-                                            className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition font-mono tracking-wider placeholder-gray-700"
+                                            className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-2 md:py-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition font-mono tracking-wider placeholder-gray-700 text-sm"
                                             value={matchIdInput}
                                             onChange={(e) => setMatchIdInput(e.target.value)}
                                         />
@@ -322,7 +348,7 @@ export const LogViewerScreen = ({ setView }) => {
                                     <div className="absolute w-full h-px bg-gray-800"></div>
                                 </div>
 
-                                {/* 条件検索エリア - mtを大きくしてタグのはみ出しを防止 */}
+                                {/* 条件検索エリア */}
                                 <div className="bg-gray-800/40 p-4 pt-6 rounded-2xl border border-gray-700/50 relative mt-2">
                                     <div className="absolute -top-3 left-3 bg-gray-900 px-2 text-[10px] font-bold text-purple-400 border border-purple-500/30 rounded-full flex items-center gap-1">
                                         <Filter size={10}/> 条件で検索
@@ -332,7 +358,7 @@ export const LogViewerScreen = ({ setView }) => {
                                         {/* 日時検索 */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between items-center">
-                                                <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><Calendar size={12}/> 日時</label>
+                                                <label className="text-[10px] md:text-xs text-gray-400 font-bold flex items-center gap-1"><Calendar size={12}/> 日時</label>
                                                 <button 
                                                     onClick={() => { setSearchDate(""); setSearchTime(""); }}
                                                     className="text-[10px] text-gray-500 hover:text-white bg-gray-800 px-2 py-0.5 rounded border border-gray-700 hover:bg-gray-700 transition flex items-center gap-1"
@@ -341,15 +367,14 @@ export const LogViewerScreen = ({ setView }) => {
                                                 </button>
                                             </div>
                                             <div className="flex flex-col gap-2">
-                                                {/* 未指定時はプレースホルダー風のスタイルにする */}
                                                 <input 
                                                     type="date" 
-                                                    className={`w-full border rounded-xl pl-4 pr-4 py-3 outline-none transition text-sm appearance-none ${searchDate ? "bg-black/40 border-gray-600 text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50" : "bg-gray-800/30 border-gray-700 text-gray-500"}`}
+                                                    className={`w-full border rounded-xl pl-4 pr-4 py-2 md:py-3 outline-none transition text-xs md:text-sm appearance-none ${searchDate ? "bg-black/40 border-gray-600 text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50" : "bg-gray-800/30 border-gray-700 text-gray-500"}`}
                                                     value={searchDate}
                                                     onChange={(e) => setSearchDate(e.target.value)}
                                                 />
                                                 <select 
-                                                    className={`w-full border rounded-xl pl-4 pr-8 py-3 outline-none transition text-sm appearance-none ${searchTime ? "bg-black/40 border-gray-600 text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50" : "bg-gray-800/30 border-gray-700 text-gray-500"}`}
+                                                    className={`w-full border rounded-xl pl-4 pr-8 py-2 md:py-3 outline-none transition text-xs md:text-sm appearance-none ${searchTime ? "bg-black/40 border-gray-600 text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50" : "bg-gray-800/30 border-gray-700 text-gray-500"}`}
                                                     value={searchTime}
                                                     onChange={(e) => setSearchTime(e.target.value)}
                                                 >
@@ -361,18 +386,18 @@ export const LogViewerScreen = ({ setView }) => {
 
                                         <div className="flex items-center gap-4 opacity-30">
                                             <div className="h-px bg-gray-500 flex-1"></div>
-                                            <span className="text-[10px] text-gray-400 font-bold">AND</span>
+                                            <span className="text-[10px] text-gray-400 font-bold">AND / OR</span>
                                             <div className="h-px bg-gray-500 flex-1"></div>
                                         </div>
 
                                         {/* プレイヤー名検索 */}
                                         <div className="space-y-2">
-                                            <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><User size={12}/> プレイヤー名</label>
+                                            <label className="text-[10px] md:text-xs text-gray-400 font-bold flex items-center gap-1"><User size={12}/> プレイヤー名</label>
                                             <input 
                                                 type="text" 
                                                 placeholder="名前 (10文字以内)" 
                                                 maxLength={10}
-                                                className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition text-sm placeholder-gray-700"
+                                                className="w-full bg-black/40 border border-gray-600 rounded-xl px-4 py-2 md:py-3 text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition text-xs md:text-sm placeholder-gray-700"
                                                 value={searchName}
                                                 onChange={(e) => setSearchName(e.target.value)}
                                             />
@@ -390,7 +415,7 @@ export const LogViewerScreen = ({ setView }) => {
                             <div className="flex flex-col gap-2 mt-2 shrink-0">
                                 <button 
                                     onClick={handleClearAll} 
-                                    className="w-full py-3 rounded-xl border border-gray-600 text-gray-400 hover:bg-gray-800 hover:text-white transition flex items-center justify-center gap-2 text-sm font-bold hover:border-gray-500"
+                                    className="w-full py-2 md:py-3 rounded-xl border border-gray-600 text-gray-400 hover:bg-gray-800 hover:text-white transition flex items-center justify-center gap-2 text-xs md:text-sm font-bold hover:border-gray-500"
                                 >
                                     <RefreshCw size={16}/> 条件をすべてクリア
                                 </button>
@@ -398,7 +423,7 @@ export const LogViewerScreen = ({ setView }) => {
                                 <button 
                                     onClick={() => handleSearchButton()} 
                                     disabled={loading}
-                                    className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    className="w-full py-3 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm md:text-base"
                                 >
                                     {loading ? <Loader className="animate-spin" size={20}/> : <Search size={20}/>}
                                     検索する
@@ -407,13 +432,13 @@ export const LogViewerScreen = ({ setView }) => {
                         </div>
 
                         {/* 右側: リストエリア */}
-                        <div className="flex-1 min-w-0 bg-gray-900/40 rounded-3xl border border-gray-800/50 overflow-hidden relative backdrop-blur-sm flex flex-col">
+                        <div className="flex-1 min-w-0 bg-gray-900/40 rounded-3xl border border-gray-800/50 overflow-hidden relative backdrop-blur-sm flex flex-col h-full">
                             <div className="p-4 border-b border-gray-800/50 bg-gray-900/50 flex justify-between items-center sticky top-0 z-10 backdrop-blur-md">
-                                <h3 className="font-bold text-gray-300 flex items-center gap-2"><List size={18} className="text-blue-400"/> GAME LIST</h3>
+                                <h3 className="font-bold text-gray-300 flex items-center gap-2 text-sm md:text-base"><List size={18} className="text-blue-400"/> GAME LIST</h3>
                                 <span className="text-xs bg-black/30 px-2 py-1 rounded text-gray-500">{matchList.length} GAMES</span>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 custom-scrollbar">
                                 {loading ? (
                                     <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-4">
                                         <Loader className="animate-spin text-blue-500" size={32}/>
@@ -430,20 +455,20 @@ export const LogViewerScreen = ({ setView }) => {
                                         <div 
                                             key={m.id} 
                                             onClick={() => processRoomData({ data: () => m, id: m.id })} 
-                                            className="group flex items-center justify-between p-4 bg-gray-800/40 hover:bg-gray-700/60 border border-gray-700/30 hover:border-blue-500/30 rounded-xl cursor-pointer transition-all duration-200 animate-fade-in-up"
+                                            className="group flex items-center justify-between p-3 md:p-4 bg-gray-800/40 hover:bg-gray-700/60 border border-gray-700/30 hover:border-blue-500/30 rounded-xl cursor-pointer transition-all duration-200 animate-fade-in-up"
                                             style={{ animationDelay: `${Math.min(idx * 0.05, 0.5)}s` }}
                                         >
-                                            <div className="flex items-center gap-4 md:gap-6 min-w-0">
-                                                <div className="shrink-0 flex flex-col items-center justify-center bg-black/20 w-12 h-12 rounded-lg border border-white/5">
+                                            <div className="flex items-center gap-3 md:gap-6 min-w-0">
+                                                <div className="shrink-0 flex flex-col items-center justify-center bg-black/20 w-10 h-10 md:w-12 md:h-12 rounded-lg border border-white/5">
                                                     {m.status === 'aborted' ? <AlertOctagon size={20} className="text-red-500 opacity-70"/> : <Trophy size={20} className={m.winner === 'citizen' ? "text-green-500" : m.winner === 'werewolf' ? "text-red-500" : m.winner === 'fox' ? "text-orange-500" : "text-gray-500"}/>}
                                                 </div>
                                                 <div className="flex flex-col min-w-0">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="font-mono text-lg font-black text-gray-200 group-hover:text-blue-300 transition tracking-widest leading-none">
+                                                    <div className="flex items-center gap-2 md:gap-3">
+                                                        <span className="font-mono text-base md:text-lg font-black text-gray-200 group-hover:text-blue-300 transition tracking-widest leading-none">
                                                             {m.matchId}
                                                         </span>
                                                         {m.status === 'aborted' && (
-                                                            <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20 font-bold uppercase">Aborted</span>
+                                                            <span className="text-[9px] md:text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20 font-bold uppercase">Aborted</span>
                                                         )}
                                                     </div>
                                                     <span className="text-[10px] text-gray-500 font-mono mt-1 flex items-center gap-1">
@@ -451,35 +476,42 @@ export const LogViewerScreen = ({ setView }) => {
                                                     </span>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-6 shrink-0 text-right">
+                                            <div className="flex items-center gap-4 md:gap-6 shrink-0 text-right">
                                                 <div className="flex flex-col items-end">
-                                                    <div className={`text-sm font-bold ${m.status === 'aborted' ? "text-gray-500" : m.winner === 'citizen' ? "text-green-400" : m.winner === 'werewolf' ? "text-red-400" : m.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
+                                                    <div className={`text-xs md:text-sm font-bold ${m.status === 'aborted' ? "text-gray-500" : m.winner === 'citizen' ? "text-green-400" : m.winner === 'werewolf' ? "text-red-400" : m.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
                                                         {m.status === 'aborted' ? "強制終了" : m.winner === 'citizen' ? "市民陣営" : m.winner === 'werewolf' ? "人狼陣営" : m.winner === 'fox' ? "妖狐" : "引き分け"}
                                                     </div>
                                                     {m.teruteruWon && (
-                                                        <span className="text-[10px] text-green-300 bg-green-900/30 px-1.5 py-0.5 rounded border border-green-500/20 mt-0.5 block w-fit">+ てるてる</span>
+                                                        <span className="text-[9px] md:text-[10px] text-green-300 bg-green-900/30 px-1.5 py-0.5 rounded border border-green-500/20 mt-0.5 block w-fit">+ てるてる</span>
                                                     )}
                                                 </div>
-                                                <ChevronRight size={20} className="text-gray-600 group-hover:text-white group-hover:translate-x-1 transition-all"/>
+                                                <ChevronRight size={18} md:size={20} className="text-gray-600 group-hover:text-white group-hover:translate-x-1 transition-all"/>
                                             </div>
                                         </div>
                                     ))
                                 )}
                             </div>
                         </div>
-                    </>
+                    </div>
                 ) : (
                     // === 詳細表示モード ===
-                    <div className="flex-1 min-w-0 flex gap-4 h-full px-[5%] justify-center">
+                    <div className="flex-1 min-w-0 flex flex-col md:flex-row gap-4 h-full px-0 md:px-[5%] justify-center overflow-hidden">
                         
+                        {/* スマホ用タブ切り替え（MD以上は非表示） */}
+                        <div className="md:hidden flex bg-gray-900/80 p-1 rounded-xl shrink-0">
+                            <button onClick={() => setDetailTab('info')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${detailTab === 'info' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>情報</button>
+                            {!searchResult.room.inPersonMode && <button onClick={() => setDetailTab('chat')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${detailTab === 'chat' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>チャット</button>}
+                            <button onClick={() => setDetailTab('log')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${detailTab === 'log' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>ログ</button>
+                        </div>
+
                         {/* 左カラム: マッチ情報 & プレイヤーリスト */}
-                        <div className="flex-1 flex flex-col gap-4 min-h-0 h-full max-w-[33%]">
+                        <div className={`flex-1 flex flex-col gap-4 min-h-0 h-full md:max-w-[33%] ${detailTab !== 'info' ? 'hidden md:flex' : 'flex'}`}>
                             <div className="bg-[#0f1115] border border-white/10 rounded-[32px] p-6 shrink-0 shadow-lg relative overflow-hidden flex flex-col items-center">
                                 <div className="w-full flex justify-between items-center mb-8 border-b border-gray-800 pb-3">
                                     <span className="text-gray-500 text-[10px] font-bold tracking-[0.2em] uppercase">MATCH ID</span>
                                     <span className="text-gray-500 text-[10px] font-mono tracking-wider">{new Date(getMillis(searchResult.room.createdAt)).toLocaleString()}</span>
                                 </div>
-                                <div className="text-7xl font-black text-white tracking-widest mb-10 text-center drop-shadow-2xl">
+                                <div className="text-5xl md:text-7xl font-black text-white tracking-widest mb-8 md:mb-10 text-center drop-shadow-2xl">
                                     {searchResult.room.matchId}
                                 </div>
                                 {getStatusDisplay(searchResult.room)}
@@ -492,13 +524,13 @@ export const LogViewerScreen = ({ setView }) => {
                             </div>
                         </div>
 
-                        {/* 中央カラム: 生存者チャット */}
-                        <div className="flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative max-w-[33%]">
-                            <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/40 backdrop-blur-sm shrink-0">
-                                <MessageSquare size={18} className="text-green-400"/> 生存者チャット
-                            </div>
-                            
-                            {!searchResult.room.inPersonMode ? (
+                        {/* 中央カラム: 生存者チャット（対面モード時は非表示） */}
+                        {!searchResult.room.inPersonMode && (
+                            <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative md:max-w-[33%] ${detailTab !== 'chat' ? 'hidden md:flex' : 'flex'}`}>
+                                <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/40 backdrop-blur-sm shrink-0">
+                                    <MessageSquare size={18} className="text-green-400"/> 生存者チャット
+                                </div>
+                                
                                 <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-black/10">
                                     {groupedChatMessages.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-50 gap-2">
@@ -530,16 +562,11 @@ export const LogViewerScreen = ({ setView }) => {
                                         ))
                                     )}
                                 </div>
-                            ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2 bg-black/20">
-                                    <MessageSquare size={32} className="opacity-50"/>
-                                    <p className="text-sm font-bold">対面モードのためチャット記録なし</p>
-                                </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
 
-                        {/* 右カラム: 詳細ログ */}
-                        <div className="flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative shadow-lg max-w-[33%]">
+                        {/* 右カラム: 詳細ログ（対面モード時は幅広にする） */}
+                        <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative shadow-lg ${searchResult.room.inPersonMode ? 'md:max-w-[66%]' : 'md:max-w-[33%]'} ${detailTab !== 'log' ? 'hidden md:flex' : 'flex'}`}>
                             <div className="flex-1 overflow-hidden">
                                 <LogPanel logs={searchResult.room.logs} showSecret={true} user={{uid:'all'}} />
                             </div>

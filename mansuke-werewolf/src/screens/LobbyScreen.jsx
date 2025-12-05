@@ -59,7 +59,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           let wolfCount = 0;
           let humanCount = 0;
           Object.entries(roleSettings).forEach(([r, c]) => { 
-              if (['werewolf', 'greatwolf'].includes(r)) wolfCount += c;
+              if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount += c; // 賢狼も人狼としてカウント
               else humanCount += c;
           });
           
@@ -161,7 +161,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       // 役職カテゴリー分け
       const roleGroups = {
           citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder', 'assassin'],
-          werewolf: ['werewolf', 'greatwolf', 'madman'],
+          werewolf: ['werewolf', 'greatwolf', 'wise_wolf', 'madman'],
           third: ['fox', 'teruteru']
       };
 
@@ -198,10 +198,11 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
               </div>
 
               {/* メインコンテンツ - 2カラムレイアウト (左: 部屋情報/プレイヤー, 右: 設定) */}
-              <div className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 min-h-0">
+              {/* スマホ対応: grid-cols-1, h-auto, overflow-y-auto */}
+              <div className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 min-h-0 overflow-y-auto lg:overflow-hidden">
                   
                   {/* --- 左カラム: 部屋情報 & プレイヤーリスト --- */}
-                  <div className="lg:col-span-4 flex flex-col gap-4 min-h-0 h-full">
+                  <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full">
                       {/* ルームコードカード */}
                       <div className="bg-gray-900/80 backdrop-blur-xl rounded-3xl p-6 shadow-xl border border-gray-700/50 shrink-0">
                           <div className="flex justify-between items-start mb-2">
@@ -252,7 +253,8 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                       </div>
 
                       {/* プレイヤーリスト */}
-                      <div className="bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 flex flex-col flex-1 min-h-0 overflow-hidden shadow-xl">
+                      {/* スマホ時は高さを制限してスクロール可能に */}
+                      <div className="bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 flex flex-col lg:flex-1 min-h-[300px] lg:min-h-0 overflow-hidden shadow-xl">
                           <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/30">
                               <h3 className="font-bold text-gray-200 flex items-center gap-2"><Users size={18} className="text-blue-400"/> 参加者リスト</h3>
                               <span className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">{players.length}人</span>
@@ -282,7 +284,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                   </div>
 
                   {/* --- 右カラム: 設定パネル --- */}
-                  <div className="lg:col-span-8 flex flex-col h-full min-h-0 bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl overflow-hidden relative">
+                  <div className="lg:col-span-8 flex flex-col h-[600px] lg:h-full min-h-0 bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl overflow-hidden relative">
                       
                       {/* タブヘッダー */}
                       <div className="flex items-center p-2 gap-2 overflow-x-auto custom-scrollbar border-b border-gray-800 bg-gray-950/50 shrink-0">
@@ -292,7 +294,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                   <button
                                       key={tab.id}
                                       onClick={() => setActiveTab(tab.id)}
-                                      className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all relative overflow-hidden ${
+                                      className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs md:text-sm font-bold transition-all relative overflow-hidden whitespace-nowrap ${
                                           isActive 
                                           ? `${tab.bg} ${tab.color} border ${tab.border} shadow-lg` 
                                           : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
@@ -327,7 +329,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                               <span className="text-sm font-bold text-gray-200 truncate shrink-0">{def.name}</span>
                                               
                                               {/* 説明文エリアをflex-growで伸ばしてボタンを底に押しやる */}
-                                              <p className="text-[10px] text-gray-500 leading-tight mt-1 mb-3 flex-grow whitespace-pre-wrap">
+                                              <p className="text-[10px] text-gray-500 leading-tight mt-1 mb-3 flex-grow whitespace-pre-wrap break-words">
                                                   {def.desc}
                                               </p>
                                               
@@ -349,7 +351,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                   {/* 議論時間設定 */}
                                   <div className="bg-gray-800/40 p-5 rounded-2xl border border-gray-700 hover:border-gray-600 transition flex items-center justify-between">
                                       <div>
-                                          <h4 className="font-bold text-white flex items-center gap-2"><Clock size={18} className="text-yellow-400"/> 議論時間（昼）</h4>
+                                          <h4 className="font-bold text-white flex items-center gap-2 text-sm md:text-base"><Clock size={18} className="text-yellow-400"/> 議論時間（昼）</h4>
                                           <p className="text-xs text-gray-400 mt-1">昼フェーズの議論時間を設定します</p>
                                       </div>
                                       <div className="flex items-center gap-2">
@@ -366,7 +368,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                   {/* 匿名投票モード */}
                                   <div className="bg-gray-800/40 p-5 rounded-2xl border border-gray-700 hover:border-gray-600 transition flex items-center justify-between">
                                       <div className="pr-4">
-                                          <h4 className="font-bold text-white flex items-center gap-2"><Settings size={18}/> 匿名投票モード</h4>
+                                          <h4 className="font-bold text-white flex items-center gap-2 text-sm md:text-base"><Settings size={18}/> 匿名投票モード</h4>
                                           <p className="text-xs text-gray-400 mt-1 leading-relaxed">昼の投票において、誰が誰に投票したかを伏せて開票します。</p>
                                       </div>
                                       {isHostUser ? (
@@ -381,7 +383,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                   {/* 対面モード */}
                                   <div className="bg-gray-800/40 p-5 rounded-2xl border border-gray-700 hover:border-gray-600 transition flex items-center justify-between">
                                       <div className="pr-4">
-                                          <h4 className="font-bold text-white flex items-center gap-2"><Mic size={18}/> 対面モード</h4>
+                                          <h4 className="font-bold text-white flex items-center gap-2 text-sm md:text-base"><Mic size={18}/> 対面モード</h4>
                                           <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                                               生存者チャットを無効化し、対面での議論を促します。<br/>
                                               役職チャット・霊界チャット・Gemini AI Chatはそのまま利用できます。

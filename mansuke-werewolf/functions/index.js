@@ -260,7 +260,13 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
         const detectives = players.filter(p => p.role === 'detective' && p.status === 'alive');
         if (detectives.length > 0) {
             const targetDay = room.day - 1;
-            const deadList = players.filter(p => p.status === 'dead' && p.deathReason !== '投票による処刑' && p.diedDay === targetDay);
+            // 名探偵への情報提供：死因が「投票による処刑」または「ホストによる追放」のプレイヤーは除外する
+            const deadList = players.filter(p => 
+                p.status === 'dead' && 
+                p.deathReason !== '投票による処刑' && 
+                p.deathReason !== 'ホストによる追放' && 
+                p.diedDay === targetDay
+            );
             let detectiveCards = [];
             if (deadList.length > 0) {
                 detectiveCards = deadList.map(d => ({ label: "死因", value: d.deathReason || "不明", sub: d.name, isBad: true, icon: "Search" }));
@@ -706,10 +712,27 @@ exports.kickPlayer = onCall(async (request) => {
         const secretRefs = [];
         const playerDocs = [];
         
+        // 観戦者かどうかを確認
+        const isTargetSpectator = pSnap.data().isSpectator;
+
+        if (isTargetSpectator) {
+            // 観戦者の場合、シークレット情報は持っていないので、単純にプレイヤーリストから削除するだけ
+            t.delete(pRef);
+            const pName = pSnap.data().name;
+            t.update(roomRef, { 
+                logs: admin.firestore.FieldValue.arrayUnion({ text: `${pName}がホストにより追放されました。`, phase: "System", day: room.day }) 
+            });
+            return;
+        }
+
+        // 以下、通常のプレイヤー追放ロジック
         for (const docSnap of allPlayersSnap.docs) {
             const p = { id: docSnap.id, ...docSnap.data() };
             // キック対象のステータスはメモリ上で更新しておく
-            if (p.id === playerId) p.status = 'vanished';
+            if (p.id === playerId) {
+                p.status = 'dead'; // vanishedではなくdead扱いにする（ログに残すため）
+                p.deathReason = 'ホストによる追放';
+            }
             
             playerDocs.push(p);
             secretRefs.push(docSnap.ref.collection('secret').doc('roleData'));
@@ -729,7 +752,8 @@ exports.kickPlayer = onCall(async (request) => {
         // 2. 書き込み操作を開始
         
         // プレイヤーのステータス更新
-        t.update(pRef, { status: 'vanished' });
+        // 死因を「ホストによる追放」とする
+        t.update(pRef, { status: 'dead', deathReason: 'ホストによる追放', diedDay: room.day });
         
         const pName = pSnap.data().name;
         t.update(roomRef, { 
@@ -813,29 +837,35 @@ exports.submitNightAction = onCall(async (request) => {
         // 賢狼ロジック: 賢狼が生存していればターゲットの役職情報を開示
         const wiseWolves = players.filter(p => p.role === 'wise_wolf' && p.status === 'alive');
         const isWiseWolfAlive = wiseWolves.length > 0;
+        const wiseWolfExists = players.some(p => p.role === 'wise_wolf'); // ゲーム内に賢狼が存在するか
         
         // 狂人を除く人狼チーム（人狼、大狼、賢狼）のみ
         const wolfTeamMembers = players.filter(p => ['werewolf', 'greatwolf', 'wise_wolf'].includes(p.role));
         
         let resultCards = [];
-        if (isWiseWolfAlive && targetId !== 'skip' && targetSecret.exists) {
-             const targetRoleKey = targetSecret.data().role;
-             const tgtRoleName = ROLE_NAMES[targetRoleKey] || "不明";
-             
-             resultCards.push({ label: "賢狼の導き", value: tgtRoleName, sub: targetName, isBad: false, icon: "Moon" });
-             
-             // ログにも追加 (賢狼の情報提供は人狼チームのみ、狂人には見せない)
-             const wolfVisibleTo = wolfTeamMembers.map(p => p.id);
-             newLogs.push({ text: `賢狼が生存しているため、人狼チームに「${targetName}の正確な役職は${tgtRoleName}」との情報を提供しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: wolfVisibleTo });
-        } else {
-             // 賢狼死亡またはスキップ時は情報なし
-             resultCards.push({ label: "賢狼の導き", value: "情報なし", sub: `賢狼が死亡したため、${targetName}の役職は提供されません`, isBad: true, icon: "Moon" });
+        // 賢狼が最初からいない場合はカードを生成しない
+        if (wiseWolfExists) {
+            if (isWiseWolfAlive && targetId !== 'skip' && targetSecret.exists) {
+                 const targetRoleKey = targetSecret.data().role;
+                 const tgtRoleName = ROLE_NAMES[targetRoleKey] || "不明";
+                 
+                 // カードのラベル変更: 賢狼の導き -> [ターゲット名]の役職
+                 resultCards.push({ label: `${targetName}の役職`, value: tgtRoleName, sub: targetName, isBad: false, icon: "Moon" });
+                 
+                 // ログにも追加 (賢狼の情報提供は人狼チームのみ、狂人には見せない)
+                 const wolfVisibleTo = wolfTeamMembers.map(p => p.id);
+                 newLogs.push({ text: `賢狼が生存しているため、人狼チームに「${targetName}の正確な役職は${tgtRoleName}」との情報を提供しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: wolfVisibleTo });
+            } else {
+                 // 賢狼死亡またはスキップ時は情報なし
+                 // カードのラベル変更
+                 resultCards.push({ label: `${targetName}の役職`, value: "情報なし", sub: `賢狼が死亡したため、${targetName}の役職は提供されません`, isBad: true, icon: "Moon" });
+            }
+            
+            // 人狼チーム全員にアクション結果(カード)を配布
+            wolfTeamMembers.forEach(w => {
+                 t.set(roomRef.collection('players').doc(w.id).collection('secret').doc('actionResult'), { day: room.day, cards: resultCards }, { merge: true });
+            });
         }
-        
-        // 人狼チーム全員にアクション結果(カード)を配布
-        wolfTeamMembers.forEach(w => {
-             t.set(roomRef.collection('players').doc(w.id).collection('secret').doc('actionResult'), { day: room.day, cards: resultCards }, { merge: true });
-        });
 
     } else if (role === 'knight') {
         newLogs.push({ text: `騎士チームは${targetName}を護衛しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: teamIds });
@@ -949,24 +979,29 @@ exports.nightInteraction = onCall(async (request) => {
                   // ★賢狼ロジック（投票による決定時も実行）
                   const wiseWolves = players.filter(p => p.role === 'wise_wolf' && p.status === 'alive');
                   const isWiseWolfAlive = wiseWolves.length > 0;
+                  const wiseWolfExists = players.some(p => p.role === 'wise_wolf'); // ゲーム内に賢狼が存在するか
                   const wolfTeamMembers = players.filter(p => ['werewolf', 'greatwolf', 'wise_wolf'].includes(p.role));
                   
-                  let resultCards = [];
-                  const targetPlayer = players.find(p => p.id === targetId);
-                  
-                  if (isWiseWolfAlive && targetId !== 'skip' && targetPlayer) {
-                       const tgtRoleName = ROLE_NAMES[targetPlayer.role] || "不明";
-                       resultCards.push({ label: "賢狼の導き", value: tgtRoleName, sub: targetName, isBad: false, icon: "Moon" });
-                       
-                       const visibleTo = wolfTeamMembers.map(p => p.id);
-                       t.update(roomRef, { logs: admin.firestore.FieldValue.arrayUnion({ text: `賢狼が生存しているため、人狼チームに「${targetName}の正確な役職は${tgtRoleName}」との情報を提供しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: visibleTo }) });
-                  } else {
-                       resultCards.push({ label: "賢狼の導き", value: "情報なし", sub: `賢狼が死亡したため、${targetName}の役職は提供されません`, isBad: true, icon: "Moon" });
+                  // 賢狼が最初からいない場合はカードを生成しない
+                  if (wiseWolfExists) {
+                      let resultCards = [];
+                      const targetPlayer = players.find(p => p.id === targetId);
+                      
+                      if (isWiseWolfAlive && targetId !== 'skip' && targetPlayer) {
+                           const tgtRoleName = ROLE_NAMES[targetPlayer.role] || "不明";
+                           // カードのラベル変更
+                           resultCards.push({ label: `${targetName}の役職`, value: tgtRoleName, sub: targetName, isBad: false, icon: "Moon" });
+                           
+                           // ログ追加は後で行う（順序制御のためここでは行わない）
+                      } else {
+                           // カードのラベル変更
+                           resultCards.push({ label: `${targetName}の役職`, value: "情報なし", sub: `賢狼が死亡したため、${targetName}の役職は提供されません`, isBad: true, icon: "Moon" });
+                      }
+                      
+                      wolfTeamMembers.forEach(w => {
+                           t.set(roomRef.collection('players').doc(w.id).collection('secret').doc('actionResult'), { day: room.day, cards: resultCards }, { merge: true });
+                      });
                   }
-                  
-                  wolfTeamMembers.forEach(w => {
-                       t.set(roomRef.collection('players').doc(w.id).collection('secret').doc('actionResult'), { day: room.day, cards: resultCards }, { merge: true });
-                  });
               }
               else if (myRole === 'knight') actionMsg = `騎士チームは${targetName}を護衛しました。`;
               else if (myRole === 'trapper') actionMsg = `罠師チームは${targetName}を護衛しました。`;
@@ -975,6 +1010,7 @@ exports.nightInteraction = onCall(async (request) => {
                   else actionMsg = `ももすけチームは今夜は誰の存在意義も消しませんでした。`;
               }
               
+              // ログの保存順序を制御：まずアクションログ、その後に賢狼ログ
               if (actionMsg) {
                   // 人狼チームの場合は狂人にも見せる
                   let visibleTo = teamIds;
@@ -983,6 +1019,21 @@ exports.nightInteraction = onCall(async (request) => {
                       visibleTo = [...new Set([...teamIds, ...madmenIds])];
                   }
                   t.update(roomRef, { logs: admin.firestore.FieldValue.arrayUnion({ text: actionMsg, phase: `夜の行動`, day: room.day, secret: true, visibleTo: visibleTo }) });
+              }
+
+              // 賢狼のログはアクションログの後に追加
+              if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole)) {
+                  const wiseWolves = players.filter(p => p.role === 'wise_wolf' && p.status === 'alive');
+                  const isWiseWolfAlive = wiseWolves.length > 0;
+                  const wiseWolfExists = players.some(p => p.role === 'wise_wolf');
+                  const targetPlayer = players.find(p => p.id === targetId);
+                  
+                  if (wiseWolfExists && isWiseWolfAlive && targetId !== 'skip' && targetPlayer) {
+                       const tgtRoleName = ROLE_NAMES[targetPlayer.role] || "不明";
+                       const wolfTeamMembers = players.filter(p => ['werewolf', 'greatwolf', 'wise_wolf'].includes(p.role));
+                       const visibleTo = wolfTeamMembers.map(p => p.id);
+                       t.update(roomRef, { logs: admin.firestore.FieldValue.arrayUnion({ text: `賢狼が生存しているため、人狼チームに「${targetName}の正確な役職は${tgtRoleName}」との情報を提供しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: visibleTo }) });
+                  }
               }
 
               t.update(roomRef, { [pendingKey]: admin.firestore.FieldValue.delete() });

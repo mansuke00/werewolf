@@ -104,26 +104,26 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
 
   return (
       <div className={`flex flex-col h-full backdrop-blur-xl border overflow-hidden shadow-xl rounded-2xl ${getContainerStyle()}`}>
-          <div className={`px-4 py-3 border-b flex flex-col shrink-0 ${getHeaderStyle()}`}>
+          <div className={`px-3 py-2 md:px-4 md:py-3 border-b flex flex-col shrink-0 ${getHeaderStyle()}`}>
               <div className="flex items-center justify-between">
-                  <span className={`font-bold flex items-center gap-2 text-sm ${isTeamChat ? "text-purple-300" : isGrave ? "text-indigo-200" : "text-blue-100"}`}>
-                      {isTeamChat ? (teammates?.length > 0 ? <Users size={16}/> : <PenTool size={16}/>) : isGrave ? <Ghost size={16}/> : <MessageSquare size={16}/>} 
-                      {title}
+                  <span className={`font-bold flex items-center gap-2 text-xs md:text-sm truncate ${isTeamChat ? "text-purple-300" : isGrave ? "text-indigo-200" : "text-blue-100"}`}>
+                      {isTeamChat ? (teammates?.length > 0 ? <Users size={16} className="shrink-0"/> : <PenTool size={16} className="shrink-0"/>) : isGrave ? <Ghost size={16} className="shrink-0"/> : <MessageSquare size={16} className="shrink-0"/>} 
+                      <span className="truncate">{title}</span>
                   </span>
                   {!readOnly && (
-                      <span className="text-[10px] bg-black/20 px-2 py-0.5 rounded-full text-gray-400 font-mono">
+                      <span className="text-[10px] bg-black/20 px-2 py-0.5 rounded-full text-gray-400 font-mono shrink-0 ml-2">
                           {chatInput.length}/50
                       </span>
                   )}
               </div>
               {descriptionText && (
-                  <span className={`text-[10px] mt-1 leading-tight ${isTeamChat ? "text-purple-300/70" : "text-indigo-300/70"}`}>
+                  <span className={`text-[10px] mt-1 leading-tight truncate ${isTeamChat ? "text-purple-300/70" : "text-indigo-300/70"}`}>
                       {descriptionText}
                   </span>
               )}
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/10 min-h-0">
+          <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-3 md:space-y-4 custom-scrollbar bg-black/10 min-h-0">
               {sortedMessages.length === 0 && (
                   <div className="h-full flex flex-col items-center justify-center opacity-30 text-gray-400">
                       <MessageSquare size={40} className="mb-2"/>
@@ -143,7 +143,7 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
                                    <span className={`text-[10px] font-bold ${isTeammate(msg.senderId) && !isGrave && !isTeamChat ? "text-red-400" : "text-gray-400"}`}>{msg.senderName}</span>
                                </div>
                            )}
-                           <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] break-words text-sm font-medium shadow-md leading-relaxed ${getMsgBubbleStyle(isMe)}`}>
+                           <div className={`px-3 py-2 md:px-4 md:py-2.5 rounded-2xl max-w-[85%] break-words text-xs md:text-sm font-medium shadow-md leading-relaxed ${getMsgBubbleStyle(isMe)}`}>
                                {msg.text}
                            </div>
                            <span className="text-[9px] text-gray-600 mt-1 px-1 opacity-60">
@@ -156,10 +156,10 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
           </div>
           
           {!readOnly && (
-              <form onSubmit={handleSubmit} className="p-3 bg-gray-900/40 backdrop-blur-md flex gap-2 border-t border-gray-700/30 shrink-0">
+              <form onSubmit={handleSubmit} className="p-2 md:p-3 bg-gray-900/40 backdrop-blur-md flex gap-2 border-t border-gray-700/30 shrink-0">
                   <div className="relative flex-1">
                       <input 
-                          className="w-full bg-gray-800/80 border border-gray-600 rounded-xl pl-4 pr-10 py-3 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition outline-none text-sm placeholder-gray-500"
+                          className="w-full bg-gray-800/80 border border-gray-600 rounded-xl pl-3 pr-8 py-2 md:pl-4 md:pr-10 md:py-3 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition outline-none text-xs md:text-sm placeholder-gray-500"
                           placeholder={placeholderText}
                           maxLength={50}
                           value={chatInput} 
@@ -170,9 +170,9 @@ export const ChatPanel = ({ messages, user, teammates, myPlayer, onSendMessage, 
                   <button 
                       type="submit" 
                       disabled={!chatInput.trim()}
-                      className="bg-blue-600 w-12 h-full rounded-xl text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center shadow-lg active:scale-95"
+                      className="bg-blue-600 w-10 md:w-12 h-full rounded-xl text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center shadow-lg active:scale-95 shrink-0"
                   >
-                      <ArrowUp size={20} strokeWidth={3}/>
+                      <ArrowUp size={18} md:size={20} strokeWidth={3}/>
                   </button>
               </form>
           )}

@@ -182,23 +182,23 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
         <div className="flex flex-col h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
             {/* ヘッダー */}
             <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex items-center justify-between shrink-0">
-                <span className="font-bold text-gray-200 flex items-center gap-2 text-sm">
-                    <Users size={16} className="text-blue-400"/> {title}
+                <span className="font-bold text-gray-200 flex items-center gap-2 text-sm truncate">
+                    <Users size={16} className="text-blue-400 shrink-0"/> {title}
                 </span>
                 
                 {/* 表示切り替えタブ */}
-                <div className="flex bg-black/30 rounded-lg p-0.5 border border-gray-700">
+                <div className="flex bg-black/30 rounded-lg p-0.5 border border-gray-700 shrink-0">
                     <button 
                         onClick={() => setViewMode('role')}
-                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition ${viewMode === 'role' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`px-2 py-1 rounded-md text-[10px] md:text-xs font-bold flex items-center gap-1 transition whitespace-nowrap ${viewMode === 'role' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
                     >
-                        <LayoutGrid size={12}/> 役職順
+                        <LayoutGrid size={12} className="shrink-0"/> 役職順
                     </button>
                     <button 
                         onClick={() => setViewMode('name')}
-                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition ${viewMode === 'name' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`px-2 py-1 rounded-md text-[10px] md:text-xs font-bold flex items-center gap-1 transition whitespace-nowrap ${viewMode === 'name' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
                     >
-                        <SortAsc size={12}/> 名前順
+                        <SortAsc size={12} className="shrink-0"/> 名前順
                     </button>
                 </div>
             </div>
@@ -232,7 +232,7 @@ const PlayerCard = ({ player, minimal }) => {
         <div className={`flex items-center p-2.5 rounded-lg border ${borderColor} ${bgColor} transition hover:bg-gray-700/40 relative overflow-hidden group`}>
             
             <div className={`p-2 rounded-full bg-black/30 mr-3 ${teamColor} shrink-0 relative`}>
-                <Icon size={18}/>
+                <Icon size={18} className="shrink-0"/>
                 {isHost && <div className="absolute -top-1 -left-1 bg-yellow-500 text-black p-0.5 rounded-full border border-black"><Crown size={8}/></div>}
             </div>
             

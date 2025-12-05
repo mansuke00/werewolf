@@ -251,18 +251,19 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
     // メンテナンス画面
     if (homeStep === 'maintenance' && !isAdmin) {
         return (
-            <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+            <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 md:p-6 relative overflow-hidden font-sans">
                 <div className="absolute inset-0 z-0">
                     <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-amber-900/20 via-black to-black animate-pulse-slow"></div>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[1px] bg-amber-500/50 blur-sm"></div>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1px] h-[800px] bg-amber-500/50 blur-sm"></div>
                 </div>
                 
-                <div className="relative z-10 text-center max-w-2xl">
-                    <Construction size={80} className="text-amber-500 mx-auto mb-8 animate-bounce-slow"/>
+                <div className="relative z-10 text-center max-w-2xl px-4">
+                    {/* アニメーション削除: animate-bounce-slow を削除 */}
+                    <Construction size={60} className="text-amber-500 mx-auto mb-6 md:w-20 md:h-20 md:mb-8"/>
                     {/* 長押しトリガー対象 */}
                     <h1 
-                        className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-700 mb-6 tracking-tight select-none cursor-default active:scale-95 transition-transform"
+                        className="text-4xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-700 mb-6 tracking-tight select-none cursor-default active:scale-95 transition-transform"
                         onMouseDown={handlePressStart}
                         onMouseUp={handlePressEnd}
                         onMouseLeave={handlePressEnd}
@@ -271,11 +272,11 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     >
                         MAINTENANCE
                     </h1>
-                    <p className="text-xl md:text-2xl text-gray-300 font-bold mb-4">
+                    <p className="text-lg md:text-2xl text-gray-300 font-bold mb-4">
                         メンテナンスモードが有効です
                     </p>
                     <div className="bg-gray-900/80 backdrop-blur border border-amber-500/30 p-6 rounded-2xl">
-                        <p className="text-gray-400 leading-relaxed">
+                        <p className="text-gray-400 leading-relaxed text-sm md:text-base">
                             現在開発者がメンテナンスを行っております。<br/>
                             開発者の準備が完了するまで、しばらくお待ちください。
                         </p>
@@ -367,7 +368,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 <div className="text-center space-y-4 mb-8 shrink-0">
                     {/* タイトルロゴ（ここを2秒長押しで管理者メニュー） */}
                     <h1 
-                        className="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 tracking-tighter drop-shadow-2xl py-2 cursor-default select-none active:scale-95 transition-transform"
+                        className="text-4xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 tracking-tighter drop-shadow-2xl py-2 cursor-default select-none active:scale-95 transition-transform"
                         onMouseDown={handlePressStart}
                         onMouseUp={handlePressEnd}
                         onMouseLeave={handlePressEnd}
@@ -376,7 +377,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     >
                         MANSUKE<br/>WEREWOLF
                     </h1>
-                    <p className="text-sm text-gray-500 font-mono">Server Edition Ver 2.3</p>
+                    <p className="text-xs md:text-sm text-gray-500 font-mono">Server Edition Ver 3.0 とりあえず公開Ver</p>
                 </div>
 
                 <div className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative w-full mx-auto flex flex-col h-auto">
@@ -393,12 +394,12 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                             )}
 
                             <div className="flex flex-col min-h-0">
-                                <h2 className="text-xl font-bold text-white flex items-center justify-between gap-2 mb-4 shrink-0 mt-2">
+                                <h2 className="text-lg md:text-xl font-bold text-white flex items-center justify-between gap-2 mb-4 shrink-0 mt-2">
                                     <span className="flex items-center gap-2">
                                         {homeStep === 'spectateRoomList' ? <Eye className="text-purple-400"/> : <Users className="text-blue-400"/>} 
                                         {homeStep === 'spectateRoomList' ? "途中参加可能な部屋" : "参加可能な部屋"}
                                     </span>
-                                    <span className="text-xs bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-500/30 flex items-center gap-1">
+                                    <span className="text-[10px] md:text-xs bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-500/30 flex items-center gap-1 whitespace-nowrap">
                                         <RefreshCw size={10} className="animate-spin-slow"/> リアルタイム更新中
                                     </span>
                                 </h2>
@@ -427,9 +428,9 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                                                         <ArrowRight size={18} className="text-gray-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-transform"/>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <User size={16} className="text-blue-400"/>
-                                                    <span className="font-bold text-lg text-white truncate">{room.hostName || "名無しホスト"} の部屋</span>
+                                                <div className="flex items-center gap-2 mb-1 w-full">
+                                                    <User size={16} className="text-blue-400 shrink-0"/>
+                                                    <span className="font-bold text-base md:text-lg text-white truncate w-full">{room.hostName || "名無しホスト"} の部屋</span>
                                                 </div>
                                                 <p className="text-xs text-gray-500">
                                                     作成: {room.createdAt ? new Date(getMillis(room.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "--:--"}
@@ -449,7 +450,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
                                 {/* 通常モード（initial）でのみ表示するボタン群 */}
                                 {homeStep === 'initial' && !isAdmin && (
-                                    <div className="flex gap-3 mt-4 pt-4 border-t border-gray-800">
+                                    <div className="flex flex-col md:flex-row gap-3 mt-4 pt-4 border-t border-gray-800">
                                         <button onClick={() => setHomeStep('spectateRoomList')} className="flex-1 bg-gray-800/50 hover:bg-gray-800 text-gray-300 font-bold py-4 rounded-xl border border-gray-700 transition flex items-center justify-center gap-2 text-sm group">
                                             <Eye size={18} className="text-blue-400 group-hover:scale-110 transition"/> 途中参加
                                         </button>
@@ -476,8 +477,9 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto w-full">
+                                {/* アニメーション削除: group-hover:animate-bounce を削除 */}
                                 <button onClick={() => { setHomeStep('nickname'); setHomeMode('create'); }} className="md:col-span-2 py-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl shadow-lg hover:scale-105 transition transform text-white font-black text-xl flex flex-col items-center justify-center gap-2 group">
-                                    <Crown size={32} className="group-hover:animate-bounce"/> 部屋を新しく作成
+                                    <Crown size={32} /> 部屋を新しく作成
                                 </button>
                                 
                                 <div className="bg-gray-800/50 border border-gray-700 p-6 rounded-2xl flex flex-col items-center justify-center gap-4">
@@ -509,7 +511,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                                 <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-lg transform rotate-3">
                                     <User size={40} className="text-white"/>
                                 </div>
-                                <h2 className="text-3xl font-bold text-white mb-2">プレイヤー名を入力してください</h2>
+                                <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">プレイヤー名を入力してください</h2>
                                 <p className="text-sm text-gray-400">ゲーム内で表示されるニックネームを決めてください</p>
                                 {(homeMode === 'join' || homeMode === 'spectate') && <div className="mt-2 text-xs font-bold text-blue-400 bg-blue-900/20 inline-block px-3 py-1 rounded-full border border-blue-500/30">{homeMode==='spectate'?'観戦':'参加'}予定の部屋: {roomCodeInput}</div>}
                             </div>
