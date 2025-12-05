@@ -11,7 +11,7 @@ import { LogViewerScreen } from './screens/LogViewerScreen.jsx';
 import { Notification } from './components/ui/Notification.jsx';
 import { db, auth } from './config/firebase.js';
 import { HEARTBEAT_INTERVAL_MS } from './constants/gameData.js';
-import { Loader, AlertTriangle, LogIn, XCircle, Home } from 'lucide-react';
+import { Loader, AlertTriangle, LogIn, XCircle, Home, MonitorX } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -27,6 +27,22 @@ export default function App() {
   const [restoreRoomId, setRestoreRoomId] = useState(null);
   const [isRestoring, setIsRestoring] = useState(true); // 初期ロード中はtrue
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+
+  // 画面サイズ・向きの監視
+  const [isMobileView, setIsMobileView] = useState(false);
+
+  useEffect(() => {
+    const checkScreen = () => {
+      const isSmall = window.innerWidth < 768; // スマホ想定
+      const isPortrait = window.innerHeight > window.innerWidth;
+      // 小さい画面または縦画面のいずれかであればブロック
+      setIsMobileView(isSmall || isPortrait);
+    };
+
+    checkScreen();
+    window.addEventListener('resize', checkScreen);
+    return () => window.removeEventListener('resize', checkScreen);
+  }, []);
 
   // 1. 初期化・認証・状態復元チェック
   useEffect(() => {
@@ -198,6 +214,33 @@ export default function App() {
       setRestoreRoomId(null);
       setShowRestoreModal(false);
   };
+
+  // 画面サイズ警告（最優先表示）
+  if (isMobileView) {
+      return (
+          <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col items-center justify-center p-6 text-center text-white overflow-hidden">
+              <div className="max-w-md w-full flex flex-col items-center gap-6 animate-fade-in-up">
+                  <div className="p-6 bg-red-900/20 rounded-full border border-red-500/30">
+                      <MonitorX size={64} className="text-red-500" />
+                  </div>
+                  <h1 className="text-xl md:text-2xl font-black leading-tight">
+                      MANSUKE WEREWOLFは<br/>スマートフォンまたは縦画面には<br/>対応していません
+                  </h1>
+                  <div className="bg-gray-900/80 border border-gray-700 p-6 rounded-2xl text-sm text-gray-300 leading-relaxed text-left">
+                      レスポンシブデザインに対応しようと頑張ったのですが、必要な情報量やゲーム体験を考慮した結果、タブレットやPCなどの大画面でのみ対応することとなりました。今後の対応予定はありません。<br/><br/>
+                      ご迷惑をおかけしますが、タブレットやPCから <span className="text-blue-400 font-mono font-bold select-all">https://mansuke.cerinal.com/werewolf</span> にアクセスするか、以下のQRコードを読み取ってください。
+                  </div>
+                  <div className="bg-white p-4 rounded-xl">
+                      <img 
+                          src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://mansuke.cerinal.com/werewolf" 
+                          alt="QR Code" 
+                          className="w-32 h-32"
+                      />
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   // ローディング画面（初期認証中）
   if (isRestoring) {

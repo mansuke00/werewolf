@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc, Hash, Filter, RefreshCw, Trash2, Crown } from 'lucide-react';
+import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc, Hash, Filter, RefreshCw, Trash2, Crown, Mic, Play } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy, Timestamp, collectionGroup, getDoc, doc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
@@ -255,41 +255,50 @@ export const LogViewerScreen = ({ setView }) => {
         timeOptions.push(<option key={i} value={i}>{`${i}:00 - ${i+1}:00`}</option>);
     }
 
-    const getStatusDisplay = (room) => {
+    const getStatusInfo = (room) => {
         if (room.status === 'aborted') {
-             return (
-                 <div className="w-full py-4 rounded-xl bg-[#2a1a1a] border border-red-500/30 text-red-400 font-bold flex items-center justify-center gap-2 tracking-wider">
-                     <AlertOctagon size={20}/> 強制終了
-                 </div>
-             );
-        } else {
-             const isCitizenWin = room.winner === 'citizen';
-             const isWerewolfWin = room.winner === 'werewolf';
-             const isFoxWin = room.winner === 'fox';
-             const isTeruteruWin = room.teruteruWon === true;
-             
-             let label = "引き分け";
-             let colorClass = "bg-[#1a1d26] border-gray-700 text-gray-400";
-             let Icon = Trophy;
-
-             // てるてる坊主が勝利している場合、勝利陣営カードのデザインも赤色ベース（目立つ色）にするなどの対応を行う
-             if (isTeruteruWin) {
-                 if (isCitizenWin) { label = "市民陣営 ＋ てるてる"; colorClass = "bg-gradient-to-r from-green-900/50 to-red-900/50 border-red-500/50 text-white"; }
-                 else if (isWerewolfWin) { label = "人狼陣営 ＋ てるてる"; colorClass = "bg-[#2a1a1a] border-red-500/50 text-red-400"; }
-                 else if (isFoxWin) { label = "妖狐 ＋ てるてる"; colorClass = "bg-gradient-to-r from-orange-900/50 to-red-900/50 border-red-500/50 text-orange-200"; }
-                 else { label = "てるてる坊主 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/50 text-red-400"; }
-             } else {
-                 if (isCitizenWin) { label = "市民陣営 勝利"; colorClass = "bg-[#1a2620] border-green-500/30 text-green-400"; }
-                 if (isWerewolfWin) { label = "人狼陣営 勝利"; colorClass = "bg-[#2a1a1a] border-red-500/30 text-red-400"; Icon = Trophy; }
-                 if (isFoxWin) { label = "妖狐 勝利"; colorClass = "bg-[#2a201a] border-orange-500/30 text-orange-400"; }
-             }
-
-             return (
-                 <div className={`w-full py-4 rounded-xl border font-bold flex items-center justify-center gap-2 tracking-wider ${colorClass}`}>
-                     <Icon size={20}/> {label}
-                 </div>
-             );
+            return { 
+                text: "強制終了", 
+                subText: "ABORTED",
+                color: "text-gray-400", 
+                bg: "bg-gray-800",
+                border: "border-gray-600",
+                gradient: "from-gray-800 to-gray-900",
+                icon: AlertOctagon 
+            };
         }
+        
+        const isCitizenWin = room.winner === 'citizen';
+        const isWerewolfWin = room.winner === 'werewolf';
+        const isFoxWin = room.winner === 'fox';
+        const isTeruteruWin = room.teruteruWon === true;
+
+        if (isTeruteruWin) {
+            if (isCitizenWin) return { text: "市民勝利 ＋ てるてる", subText: "CITIZEN + TERUTERU", color: "text-yellow-200", bg: "bg-yellow-900/30", border: "border-yellow-500", gradient: "from-yellow-900/40 to-green-900/40", icon: Trophy };
+            if (isWerewolfWin) return { text: "人狼勝利 ＋ てるてる", subText: "WEREWOLF + TERUTERU", color: "text-yellow-200", bg: "bg-red-900/30", border: "border-red-500", gradient: "from-red-900/40 to-yellow-900/40", icon: Trophy };
+            if (isFoxWin) return { text: "妖狐勝利 ＋ てるてる", subText: "FOX + TERUTERU", color: "text-orange-200", bg: "bg-orange-900/30", border: "border-orange-500", gradient: "from-orange-900/40 to-yellow-900/40", icon: Trophy };
+            return { text: "てるてる坊主 勝利", subText: "TERUTERU WIN", color: "text-yellow-400", bg: "bg-yellow-900/30", border: "border-yellow-500", gradient: "from-yellow-900/20 to-black", icon: Trophy };
+        }
+
+        if (isCitizenWin) return { text: "市民陣営 勝利", subText: "CITIZEN WIN", color: "text-green-400", bg: "bg-green-900/20", border: "border-green-600", gradient: "from-green-900/30 to-black", icon: Trophy };
+        if (isWerewolfWin) return { text: "人狼陣営 勝利", subText: "WEREWOLF WIN", color: "text-red-400", bg: "bg-red-900/20", border: "border-red-600", gradient: "from-red-900/30 to-black", icon: Trophy };
+        if (isFoxWin) return { text: "妖狐 勝利", subText: "FOX WIN", color: "text-orange-400", bg: "bg-orange-900/20", border: "border-orange-600", gradient: "from-orange-900/30 to-black", icon: Trophy };
+
+        return { text: "引き分け", subText: "DRAW", color: "text-gray-400", bg: "bg-gray-800", border: "border-gray-600", gradient: "from-gray-800 to-black", icon: Trophy };
+    };
+
+    const getStatusDisplay = (room) => {
+        const info = getStatusInfo(room);
+        const Icon = info.icon;
+        
+        return (
+             <div className={`w-full py-4 rounded-xl border font-bold flex flex-col items-center justify-center gap-1 tracking-wider ${info.bg} ${info.border} ${info.color} shadow-lg`}>
+                 <div className="flex items-center gap-2 text-lg">
+                     <Icon size={24}/> {info.text}
+                 </div>
+                 <span className="text-[10px] opacity-70 tracking-[0.2em] font-mono">{info.subText}</span>
+             </div>
+        );
     };
 
     return (
@@ -315,7 +324,6 @@ export const LogViewerScreen = ({ setView }) => {
                 
                 {!showDetail ? (
                     // === リスト表示モード ===
-                    // スマホでは縦積み、PCでは横並び
                     <div className="flex flex-col md:flex-row gap-4 w-full h-full min-h-0">
                         {/* 左側: 検索パネル */}
                         <div className="w-full md:w-[30%] md:min-w-[300px] md:max-w-sm flex flex-col gap-4 bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl p-4 md:p-6 relative shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full">
@@ -431,14 +439,14 @@ export const LogViewerScreen = ({ setView }) => {
                             </div>
                         </div>
 
-                        {/* 右側: リストエリア */}
+                        {/* 右側: リストエリア（デザイン刷新） */}
                         <div className="flex-1 min-w-0 bg-gray-900/40 rounded-3xl border border-gray-800/50 overflow-hidden relative backdrop-blur-sm flex flex-col h-full">
                             <div className="p-4 border-b border-gray-800/50 bg-gray-900/50 flex justify-between items-center sticky top-0 z-10 backdrop-blur-md">
                                 <h3 className="font-bold text-gray-300 flex items-center gap-2 text-sm md:text-base"><List size={18} className="text-blue-400"/> GAME LIST</h3>
                                 <span className="text-xs bg-black/30 px-2 py-1 rounded text-gray-500">{matchList.length} GAMES</span>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 custom-scrollbar">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                                 {loading ? (
                                     <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-4">
                                         <Loader className="animate-spin text-blue-500" size={32}/>
@@ -451,49 +459,56 @@ export const LogViewerScreen = ({ setView }) => {
                                         <p className="text-xs text-gray-600 mt-1">条件を変更して検索してください</p>
                                     </div>
                                 ) : (
-                                    matchList.map((m, idx) => (
-                                        <div 
-                                            key={m.id} 
-                                            onClick={() => processRoomData({ data: () => m, id: m.id })} 
-                                            className="group flex items-center justify-between p-3 md:p-4 bg-gray-800/40 hover:bg-gray-700/60 border border-gray-700/30 hover:border-blue-500/30 rounded-xl cursor-pointer transition-all duration-200 animate-fade-in-up"
-                                            style={{ animationDelay: `${Math.min(idx * 0.05, 0.5)}s` }}
-                                        >
-                                            <div className="flex items-center gap-3 md:gap-6 min-w-0">
-                                                <div className="shrink-0 flex flex-col items-center justify-center bg-black/20 w-10 h-10 md:w-12 md:h-12 rounded-lg border border-white/5">
-                                                    {m.status === 'aborted' ? <AlertOctagon size={20} className="text-red-500 opacity-70"/> : <Trophy size={20} className={m.winner === 'citizen' ? "text-green-500" : m.winner === 'werewolf' ? "text-red-500" : m.winner === 'fox' ? "text-orange-500" : "text-gray-500"}/>}
-                                                </div>
-                                                <div className="flex flex-col min-w-0">
-                                                    <div className="flex items-center gap-2 md:gap-3">
-                                                        <span className="font-mono text-base md:text-lg font-black text-gray-200 group-hover:text-blue-300 transition tracking-widest leading-none">
-                                                            {m.matchId}
-                                                        </span>
-                                                        {m.status === 'aborted' && (
-                                                            <span className="text-[9px] md:text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20 font-bold uppercase">Aborted</span>
-                                                        )}
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {matchList.map((m, idx) => {
+                                            const statusInfo = getStatusInfo(m);
+                                            return (
+                                                <div 
+                                                    key={m.id} 
+                                                    onClick={() => processRoomData({ data: () => m, id: m.id })} 
+                                                    className={`group relative flex flex-col gap-3 p-4 rounded-2xl cursor-pointer transition-all duration-300 animate-fade-in-up shadow-lg hover:shadow-xl hover:-translate-y-1 bg-gradient-to-br ${statusInfo.gradient} border-l-4 ${statusInfo.border} border-t border-r border-b border-white/5`}
+                                                    style={{ animationDelay: `${Math.min(idx * 0.05, 0.5)}s` }}
+                                                >
+                                                    {/* ヘッダー部分: IDとバッジ */}
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-3 mb-1">
+                                                                <span className="bg-black/40 backdrop-blur px-2 py-0.5 rounded text-[10px] font-mono font-bold text-gray-400 tracking-widest border border-white/10">
+                                                                    MATCH: {m.matchId}
+                                                                </span>
+                                                                <span className="bg-black/40 backdrop-blur px-2 py-0.5 rounded text-[10px] font-mono font-bold text-gray-400 tracking-widest border border-white/10">
+                                                                    ROOM: {m.id}
+                                                                </span>
+                                                            </div>
+                                                            <div className={`text-lg md:text-xl font-black tracking-wide flex items-center gap-2 ${statusInfo.color}`}>
+                                                                {statusInfo.text}
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="bg-black/30 p-2 rounded-full border border-white/10 group-hover:bg-white/10 transition">
+                                                            <ChevronRight size={20} className="text-gray-400 group-hover:text-white"/>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-col gap-0.5 mt-1">
-                                                        <span className="text-[10px] text-gray-500 font-mono flex items-center gap-1">
-                                                            <Clock size={10}/> {new Date(getMillis(m.createdAt)).toLocaleString()}
-                                                        </span>
-                                                        <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                                                            <Crown size={10} className="text-yellow-600"/> Host: {m.hostName || "不明"}
-                                                        </span>
+
+                                                    {/* フッター部分: ホストと時間 */}
+                                                    <div className="flex items-center justify-between pt-3 border-t border-white/10 mt-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-full border border-white/5">
+                                                                <Crown size={12} className="text-yellow-500 fill-yellow-500/20"/>
+                                                                <span className="text-xs font-bold text-gray-200 truncate max-w-[100px]">{m.hostName || "不明"}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 text-gray-400">
+                                                            <Clock size={12}/>
+                                                            <span className="text-xs font-mono font-medium">
+                                                                {new Date(getMillis(m.createdAt)).toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'})}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center gap-4 md:gap-6 shrink-0 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <div className={`text-xs md:text-sm font-bold ${m.status === 'aborted' ? "text-gray-500" : m.winner === 'citizen' ? "text-green-400" : m.winner === 'werewolf' ? "text-red-400" : m.winner === 'fox' ? "text-orange-400" : "text-gray-500"}`}>
-                                                        {m.status === 'aborted' ? "強制終了" : m.winner === 'citizen' ? "市民陣営" : m.winner === 'werewolf' ? "人狼陣営" : m.winner === 'fox' ? "妖狐" : "引き分け"}
-                                                    </div>
-                                                    {m.teruteruWon && (
-                                                        <span className="text-[9px] md:text-[10px] text-green-300 bg-green-900/30 px-1.5 py-0.5 rounded border border-green-500/20 mt-0.5 block w-fit">+ てるてる</span>
-                                                    )}
-                                                </div>
-                                                <ChevronRight size={18} md:size={20} className="text-gray-600 group-hover:text-white group-hover:translate-x-1 transition-all"/>
-                                            </div>
-                                        </div>
-                                    ))
+                                            );
+                                        })}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -516,7 +531,7 @@ export const LogViewerScreen = ({ setView }) => {
                                     <span className="text-gray-500 text-[10px] font-bold tracking-[0.2em] uppercase">MATCH ID</span>
                                     <span className="text-gray-500 text-[10px] font-mono tracking-wider">{new Date(getMillis(searchResult.room.createdAt)).toLocaleString()}</span>
                                 </div>
-                                <div className="text-5xl md:text-7xl font-black text-white tracking-widest mb-8 md:mb-10 text-center drop-shadow-2xl">
+                                <div className="text-5xl md:text-7xl font-black text-white tracking-widest mb-8 md:mb-10 text-center drop-shadow-2xl break-all">
                                     {searchResult.room.matchId}
                                 </div>
                                 {getStatusDisplay(searchResult.room)}
@@ -529,14 +544,14 @@ export const LogViewerScreen = ({ setView }) => {
                             </div>
                         </div>
 
-                        {/* 中央カラム: 生存者チャット（対面モード時は非表示） */}
+                        {/* 中央カラム: 生存者チャット（対面モード時は利用不可表示） */}
                         {!searchResult.room.inPersonMode && (
                             <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative md:max-w-[33%] ${detailTab !== 'chat' ? 'hidden md:flex' : 'flex'}`}>
                                 <div className="p-4 border-b border-gray-700 font-bold text-gray-300 flex items-center gap-2 bg-gray-800/40 backdrop-blur-sm shrink-0">
                                     <MessageSquare size={18} className="text-green-400"/> 生存者チャット
                                 </div>
                                 
-                                <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-black/10">
+                                <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-black/10 relative">
                                     {groupedChatMessages.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-50 gap-2">
                                             <MessageSquare size={32}/>

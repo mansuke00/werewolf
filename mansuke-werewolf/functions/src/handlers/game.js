@@ -24,10 +24,16 @@ exports.startGameHandler = async (request) => {
   let roles = [];
   let wolfCount = 0, humanCount = 0;
   Object.entries(roleSettings).forEach(([r, c]) => { 
-      for(let i=0; i<c; i++) { roles.push(r); if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount++; else humanCount++; } 
+      for(let i=0; i<c; i++) { 
+          roles.push(r); 
+          // 人狼カウントロジック：賢狼（wise_wolf）も確実に含める
+          if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount++; 
+          else humanCount++; 
+      } 
   });
   
   if (roles.length !== players.length) throw new HttpsError('invalid-argument', '人数不一致');
+  // 人狼カウントが0（賢狼のみの場合でも1になるため、ここは「人狼陣営がいない」場合のエラーとなる）
   if (wolfCount === 0) throw new HttpsError('failed-precondition', '人狼がいません');
   if (wolfCount >= humanCount) throw new HttpsError('failed-precondition', '人狼過半数');
   

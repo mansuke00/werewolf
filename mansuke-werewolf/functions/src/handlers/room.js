@@ -10,7 +10,7 @@ const { checkNightCompletion, applyPhaseChange } = require('../core');
 // 観戦者として参加
 exports.joinSpectatorHandler = async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', '認証が必要です');
-    const { roomCode, nickname } = request.data;
+    const { roomCode, nickname, isDev } = request.data;
     const uid = request.auth.uid;
     const roomRef = db.collection('artifacts').doc('mansuke-jinro').collection('public').doc('data').collection('rooms').doc(roomCode);
     
@@ -27,6 +27,11 @@ exports.joinSpectatorHandler = async (request) => {
             lastSeen: admin.firestore.FieldValue.serverTimestamp(),
             isSpectator: true
         };
+        
+        // 開発者フラグがあれば保存
+        if (isDev) {
+            playerData.isDev = true;
+        }
 
         t.set(playerRef, playerData);
 
@@ -48,7 +53,7 @@ exports.deleteRoomHandler = async (request) => {
     
     const batch = db.batch();
     
-    // サブコレクションの削除（主要なもののみ）
+    // サブコレクションの削除
     const subcollections = ['chat', 'teamChats', 'graveChat', 'votes', 'players'];
     for (const subColName of subcollections) {
         const snap = await roomRef.collection(subColName).get();
@@ -93,6 +98,7 @@ exports.abortGameHandler = async (request) => {
 exports.kickPlayerHandler = async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', '認証が必要です');
     const { roomCode, playerId } = request.data;
+    const requesterId = request.auth.uid;
     const roomRef = db.collection('artifacts').doc('mansuke-jinro').collection('public').doc('data').collection('rooms').doc(roomCode);
     
     await db.runTransaction(async (t) => {
@@ -101,6 +107,17 @@ exports.kickPlayerHandler = async (request) => {
         if (!rSnap.exists) throw new HttpsError('not-found', '部屋が見つかりません');
         const room = rSnap.data();
         
+        // 実行者の権限チェック（ホスト または 開発者フラグ持ち）
+        const requesterRef = roomRef.collection('players').doc(requesterId);
+        const requesterSnap = await t.get(requesterRef);
+        
+        const isHost = room.hostId === requesterId;
+        const isDev = requesterSnap.exists && requesterSnap.data().isDev === true;
+        
+        if (!isHost && !isDev) {
+            throw new HttpsError('permission-denied', '権限がありません');
+        }
+
         const pRef = roomRef.collection('players').doc(playerId);
         const pSnap = await t.get(pRef);
         if (!pSnap.exists) throw new HttpsError('not-found', 'プレイヤーが見つかりません');
@@ -108,8 +125,6 @@ exports.kickPlayerHandler = async (request) => {
         const allPlayersSnap = await t.get(roomRef.collection('players'));
         
         const playersData = [];
-        // Promise.allを使って全プレイヤーのシークレット情報を取得
-        // トランザクション内なのでこれも最初にまとめて行う
         const secretRefs = [];
         const playerDocs = [];
         
@@ -117,29 +132,28 @@ exports.kickPlayerHandler = async (request) => {
         const isTargetSpectator = pSnap.data().isSpectator;
 
         if (isTargetSpectator) {
-            // 観戦者の場合、シークレット情報は持っていないので、単純にプレイヤーリストから削除するだけ
+            // 観戦者の場合
             t.delete(pRef);
             const pName = pSnap.data().name;
+            const currentDay = room.day || 1;
             t.update(roomRef, { 
-                logs: admin.firestore.FieldValue.arrayUnion({ text: `${pName}がホストにより追放されました。`, phase: "System", day: room.day }) 
+                logs: admin.firestore.FieldValue.arrayUnion({ text: `${pName}がホスト/管理者により追放されました。`, phase: "System", day: currentDay }) 
             });
             return;
         }
 
-        // 以下、通常のプレイヤー追放ロジック
+        // 通常プレイヤー追放ロジック
         for (const docSnap of allPlayersSnap.docs) {
             const p = { id: docSnap.id, ...docSnap.data() };
-            // キック対象のステータスはメモリ上で更新しておく
             if (p.id === playerId) {
-                p.status = 'dead'; // vanishedではなくdead扱いにする（ログに残すため）
-                p.deathReason = 'ホストによる追放';
+                p.status = 'dead'; 
+                p.deathReason = '強制追放';
             }
-            
             playerDocs.push(p);
             secretRefs.push(docSnap.ref.collection('secret').doc('roleData'));
         }
         
-        const secretSnaps = await Promise.all(secretRefs.map(ref => t.get(ref)));
+        const secretSnaps = await t.getAll(...secretRefs);
         
         for (let i = 0; i < playerDocs.length; i++) {
             const p = playerDocs[i];
@@ -151,29 +165,27 @@ exports.kickPlayerHandler = async (request) => {
         }
 
         // 2. 書き込み操作を開始
+        const currentDay = room.day || 1;
         
         // プレイヤーのステータス更新
-        // 死因を「ホストによる追放」とする
-        t.update(pRef, { status: 'dead', deathReason: 'ホストによる追放', diedDay: room.day });
+        t.update(pRef, { status: 'dead', deathReason: 'ホストによる追放', diedDay: currentDay });
         
         const pName = pSnap.data().name;
         t.update(roomRef, { 
-            logs: admin.firestore.FieldValue.arrayUnion({ text: `${pName}がホストにより追放されました。`, phase: "System", day: room.day }) 
+            logs: admin.firestore.FieldValue.arrayUnion({ text: `${pName}がホスト/管理者により追放されました。`, phase: "System", day: currentDay }) 
         });
 
-        // 勝敗判定の再計算
+        // 勝敗判定
         const deadIds = playersData.filter(p => p.status === 'dead' || p.status === 'vanished').map(p => p.id);
         const winner = checkWin(playersData, deadIds);
         
         if (winner) {
             t.update(roomRef, { status: 'finished', winner: winner });
-        } else if (room.phase.startsWith('night')) {
+        } else if (room.phase && room.phase.startsWith('night')) {
             await checkNightCompletion(t, roomRef, room, playersData);
-        } else if (room.phase.startsWith('day')) {
-             // 昼フェーズの場合、残りの生存者全員が準備完了か確認する
+        } else if (room.phase && room.phase.startsWith('day')) {
              const alive = playersData.filter(p => p.status === 'alive');
              const allReady = alive.every(p => p.isReady);
-             // 少なくとも1人以上の生存者がいて、全員準備完了なら進める
              if (allReady && alive.length > 0) {
                  await applyPhaseChange(t, roomRef, room, playersData);
              }
@@ -187,19 +199,37 @@ exports.getAllPlayerRolesHandler = async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', '認証が必要です');
     const { roomCode } = request.data;
     const uid = request.auth.uid;
+    
+    // 参照取得
     const roomRef = db.collection('artifacts').doc('mansuke-jinro').collection('public').doc('data').collection('rooms').doc(roomCode);
     const roomSnap = await roomRef.get();
+    
     if (!roomSnap.exists) throw new HttpsError('not-found', 'Room not found');
     const room = roomSnap.data();
-    const pSnap = await roomRef.collection('players').get();
-    const me = pSnap.docs.find(d => d.id === uid);
-    
-    const isDead = me && (me.data().status === 'dead' || me.data().status === 'vanished');
-    const isFinished = room.status === 'finished' || room.status === 'closed';
-    const isHost = room.hostId === uid;
-    
-    if (!isDead && !isFinished && !isHost) throw new HttpsError('permission-denied', '権限がありません');
 
+    // プレイヤー情報の取得
+    const pSnap = await roomRef.collection('players').get();
+    const meDoc = pSnap.docs.find(d => d.id === uid);
+    const me = meDoc ? meDoc.data() : null;
+    
+    // 権限チェック用フラグ
+    const status = room.status;
+    const isFinished = status === 'finished' || status === 'closed' || status === 'aborted';
+    
+    const isHost = room.hostId === uid;
+    const isDead = me && (me.status === 'dead' || me.status === 'vanished');
+    const isDev = me && me.isDev === true;
+    const isSpectator = me && me.isSpectator === true;
+    
+    // いずれかの条件を満たせば許可
+    // ゲームが終了している場合(isFinished)は、プレイヤーの状態に関わらず全員に許可する
+    const isAllowed = isFinished || isHost || isDead || isDev || isSpectator;
+
+    if (!isAllowed) {
+        throw new HttpsError('permission-denied', `権限がありません (status:${status})`);
+    }
+
+    // データ構築
     const playersData = [];
     const secretRefs = pSnap.docs.map(d => d.ref.collection('secret').doc('roleData'));
     const secretSnaps = await db.getAll(...secretRefs);

@@ -97,7 +97,15 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
               isDanger: true,
               onConfirm: async () => {
                   setModalConfig(null);
-                  await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { status: 'closed' });
+                  try {
+                      // 確実に削除するためにFunctionを使用
+                      const fn = httpsCallable(functions, 'deleteRoom');
+                      await fn({ roomCode });
+                  } catch (e) {
+                      console.error(e);
+                      // 失敗した場合は従来通りupdateDocで試みる
+                      await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { status: 'closed' });
+                  }
               },
               onCancel: () => setModalConfig(null)
           });
@@ -138,7 +146,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
               onConfirm: async () => {
                   setModalConfig(null);
                   try {
-                      await deleteDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', playerId));
+                      // 修正: deleteDocではなくCloud Functions経由でキックを実行
+                      const fn = httpsCallable(functions, 'kickPlayer');
+                      await fn({ roomCode, playerId });
                       setNotification({ message: `${playerName} さんを退出させました`, type: "success" });
                   } catch(e) {
                       setNotification({ message: "操作エラー: " + e.message, type: "error" });

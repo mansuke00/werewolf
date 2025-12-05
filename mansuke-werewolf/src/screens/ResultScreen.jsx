@@ -268,108 +268,111 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     </div>;
 
     return (
-        <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 p-4 md:p-6 overflow-y-auto z-[100]">
+        <div className="fixed inset-0 bg-gray-950 flex flex-col z-[100]">
             {modalConfig && <ConfirmationModal {...modalConfig} />}
             {/* 通知コンポーネントを削除しました（App.jsx側で表示されるため） */}
             
-            <div className="max-w-6xl w-full text-center space-y-4 md:space-y-8 animate-fade-in-up pb-20 pt-10">
-                
-                {/* 勝利アイコン表示エリア */}
-                {isAborted ? (
-                    <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4 animate-pulse"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
-                ) : (
-                    <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-2 md:mb-4 relative">
-                        {isCitizenWin ? <Sun size={48} md:size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={48} md:size={64} className="text-orange-500 animate-pulse"/> : <Moon size={48} md:size={64} className="text-red-500"/>}
-                        {isTeruteruWin && <Smile size={24} md:size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50 animate-bounce"/>}
+            {/* スクロールエリア */}
+            <div className="flex-1 overflow-y-auto w-full flex flex-col items-center p-4 md:p-6 pb-24">
+                <div className="max-w-6xl w-full text-center space-y-4 md:space-y-8 animate-fade-in-up pt-10">
+                    
+                    {/* 勝利アイコン表示エリア */}
+                    {isAborted ? (
+                        <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4 animate-pulse"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
+                    ) : (
+                        <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-2 md:mb-4 relative">
+                            {isCitizenWin ? <Sun size={48} md:size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={48} md:size={64} className="text-orange-500 animate-pulse"/> : <Moon size={48} md:size={64} className="text-red-500"/>}
+                            {isTeruteruWin && <Smile size={24} md:size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50 animate-bounce"/>}
+                        </div>
+                    )}
+                    
+                    {/* メインタイトル */}
+                    <h1 className={`text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r ${titleGradient} drop-shadow-2xl`}>
+                        {mainTitle}
+                    </h1>
+                    
+                    {/* 詳細説明 */}
+                    <div className="flex flex-col items-center justify-center gap-2">
+                        <p className="text-lg md:text-2xl text-white font-bold tracking-widest">{resultDescription}</p>
                     </div>
-                )}
-                
-                {/* メインタイトル */}
-                <h1 className={`text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r ${titleGradient} drop-shadow-2xl`}>
-                    {mainTitle}
-                </h1>
-                
-                {/* 詳細説明 */}
-                <div className="flex flex-col items-center justify-center gap-2">
-                    <p className="text-lg md:text-2xl text-white font-bold tracking-widest">{resultDescription}</p>
-                </div>
-                
-                <style>{`
-                    @keyframes shine-gold { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-                    @keyframes pulse-border { 0% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } 50% { border-color: rgba(253, 224, 71, 1); box-shadow: 0 0 40px rgba(234, 179, 8, 0.6); } 100% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } }
-                `}</style>
+                    
+                    <style>{`
+                        @keyframes shine-gold { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+                        @keyframes pulse-border { 0% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } 50% { border-color: rgba(253, 224, 71, 1); box-shadow: 0 0 40px rgba(234, 179, 8, 0.6); } 100% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } }
+                    `}</style>
 
-                {/* 勝利プレイヤー一覧 */}
-                {!isAborted && (
-                    <div className="flex flex-col items-center mt-8 w-full">
-                          <p className="text-gray-400 text-xs md:text-sm mb-4 uppercase tracking-widest font-bold flex items-center gap-2"><Trophy size={16} className="text-yellow-500"/> WINNERS</p>
-                          {!dataLoaded ? (
-                              <div className="flex items-center gap-2 text-gray-500 animate-pulse"><Loader size={16} className="animate-spin"/><span>勝者を判定中...</span></div>
-                          ) : winningPlayers.length === 0 ? (
-                              <p className="text-gray-500">勝者なし</p>
-                          ) : (
-                              <div className="flex flex-wrap justify-center gap-2 md:gap-4 w-full">
-                                  {winningPlayers.map(p => {
-                                      const def = p.role && ROLE_DEFINITIONS[p.role];
-                                      const roleName = def ? def.name : "不明";
-                                      const Icon = def ? def.icon : Sun;
-                                      return (
-                                          <div key={p.id} className={`w-32 md:w-40 p-3 md:p-4 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 relative ${p.status === 'dead' ? 'bg-gray-900/50 border-gray-700 opacity-70 grayscale' : 'bg-gradient-to-b from-gray-800 to-gray-900 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)]'}`}>
-                                              <div className="mb-2 p-2 rounded-full bg-white/5"><Icon size={24} md:size={32} className={p.status === 'dead' ? "text-gray-500" : "text-yellow-400"}/></div>
-                                              <div className="font-bold text-white truncate w-full text-center flex items-center justify-center gap-1 text-xs md:text-sm mb-1">{p.name}</div>
-                                              <div className="flex items-center gap-1">
-                                                  <div className="px-2 py-0.5 rounded text-[9px] md:text-[10px] font-bold bg-white/10 text-gray-300">{roleName}</div>
-                                                  {p.status === 'dead' && <span className="text-[8px] md:text-[9px] text-red-400 font-bold border border-red-900/50 px-1.5 py-0.5 rounded bg-red-950/30">DEAD</span>}
+                    {/* 勝利プレイヤー一覧 */}
+                    {!isAborted && (
+                        <div className="flex flex-col items-center mt-8 w-full">
+                              <p className="text-gray-400 text-xs md:text-sm mb-4 uppercase tracking-widest font-bold flex items-center gap-2"><Trophy size={16} className="text-yellow-500"/> WINNERS</p>
+                              {!dataLoaded ? (
+                                  <div className="flex items-center gap-2 text-gray-500 animate-pulse"><Loader size={16} className="animate-spin"/><span>勝者を判定中...</span></div>
+                              ) : winningPlayers.length === 0 ? (
+                                  <p className="text-gray-500">勝者なし</p>
+                              ) : (
+                                  <div className="flex flex-wrap justify-center gap-2 md:gap-4 w-full">
+                                      {winningPlayers.map(p => {
+                                          const def = p.role && ROLE_DEFINITIONS[p.role];
+                                          const roleName = def ? def.name : "不明";
+                                          const Icon = def ? def.icon : Sun;
+                                          return (
+                                              <div key={p.id} className={`w-32 md:w-40 p-3 md:p-4 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 relative ${p.status === 'dead' ? 'bg-gray-900/50 border-gray-700 opacity-70 grayscale' : 'bg-gradient-to-b from-gray-800 to-gray-900 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)]'}`}>
+                                                  <div className="mb-2 p-2 rounded-full bg-white/5"><Icon size={24} md:size={32} className={p.status === 'dead' ? "text-gray-500" : "text-yellow-400"}/></div>
+                                                  <div className="font-bold text-white truncate w-full text-center flex items-center justify-center gap-1 text-xs md:text-sm mb-1">{p.name}</div>
+                                                  <div className="flex items-center gap-1">
+                                                      <div className="px-2 py-0.5 rounded text-[9px] md:text-[10px] font-bold bg-white/10 text-gray-300">{roleName}</div>
+                                                      {p.status === 'dead' && <span className="text-[8px] md:text-[9px] text-red-400 font-bold border border-red-900/50 px-1.5 py-0.5 rounded bg-red-950/30">DEAD</span>}
+                                                  </div>
                                               </div>
-                                          </div>
-                                      );
-                                  })}
+                                          );
+                                      })}
+                                  </div>
+                              )}
+                        </div>
+                    )}
+
+                    {/* アクションボタン */}
+                    <div className="pt-8 flex flex-col items-center gap-3 w-full max-w-md mx-auto">
+                          <button onClick={() => setShowDetail(true)} className="w-full px-8 py-3 md:py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm md:text-base"><FileText size={20}/> 詳細ログを確認</button>
+                          {hasControl ? (
+                              <>
+                                  <div className="w-full h-px bg-gray-800 my-2"></div>
+                                  <button 
+                                      onClick={handleReplay} 
+                                      disabled={loading}
+                                      className="w-full px-8 py-3 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-full hover:scale-105 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+                                  >
+                                      {loading ? <Loader className="animate-spin" size={20}/> : <RefreshCw size={20}/>}
+                                      同じ部屋・設定で再度プレイ
+                                  </button>
+                                  <button 
+                                      onClick={confirmCloseRoom} 
+                                      disabled={loading}
+                                      className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+                                  >
+                                      {loading ? <Loader className="animate-spin" size={18}/> : <LogOut size={18}/>}
+                                      部屋を解散する
+                                  </button>
+                              </>
+                          ) : (
+                              <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse text-sm">
+                                  <Loader size={18} className="animate-spin"/>
+                                  <span>ホストの操作を待っています...</span>
                               </div>
                           )}
+                          
+                          {!isHost && (
+                              <button onClick={handleExit} className="w-full px-8 py-3 bg-gray-900 text-gray-400 font-bold rounded-full hover:bg-gray-800 border border-gray-700 transition flex items-center justify-center gap-2 mt-2 text-sm md:text-base">
+                                  <LogOut size={18}/> ホームに戻る
+                              </button>
+                          )}
                     </div>
-                )}
-
-                {/* アクションボタン */}
-                <div className="pt-8 flex flex-col items-center gap-3 w-full max-w-md mx-auto pb-24 md:pb-0">
-                      <button onClick={() => setShowDetail(true)} className="w-full px-8 py-3 md:py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm md:text-base"><FileText size={20}/> 詳細ログを確認</button>
-                      {hasControl ? (
-                          <>
-                              <div className="w-full h-px bg-gray-800 my-2"></div>
-                              <button 
-                                  onClick={handleReplay} 
-                                  disabled={loading}
-                                  className="w-full px-8 py-3 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-full hover:scale-105 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
-                              >
-                                  {loading ? <Loader className="animate-spin" size={20}/> : <RefreshCw size={20}/>}
-                                  同じ部屋・設定で再度プレイ
-                              </button>
-                              <button 
-                                  onClick={confirmCloseRoom} 
-                                  disabled={loading}
-                                  className="w-full px-8 py-3 text-red-400 border border-red-900/50 rounded-full hover:bg-red-900/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
-                              >
-                                  {loading ? <Loader className="animate-spin" size={18}/> : <LogOut size={18}/>}
-                                  部屋を解散する
-                              </button>
-                          </>
-                      ) : (
-                          <div className="mt-4 p-4 bg-black/40 rounded-xl border border-gray-800 flex items-center justify-center gap-3 text-gray-400 animate-pulse text-sm">
-                              <Loader size={18} className="animate-spin"/>
-                              <span>ホストの操作を待っています...</span>
-                          </div>
-                      )}
-                      
-                      {!isHost && (
-                          <button onClick={handleExit} className="w-full px-8 py-3 bg-gray-900 text-gray-400 font-bold rounded-full hover:bg-gray-800 border border-gray-700 transition flex items-center justify-center gap-2 mt-2 text-sm md:text-base">
-                              <LogOut size={18}/> ホームに戻る
-                          </button>
-                      )}
                 </div>
             </div>
 
             {/* 試合IDカード (画面右下に固定表示 - スクロール影響回避のためルート直下に移動) */}
             {showMatchId && (
-                <div className="fixed bottom-0 right-0 z-[200] animate-fade-in-up">
+                <div className="absolute bottom-4 right-4 z-[200] animate-fade-in-up">
                     <div className="bg-gray-900/90 border border-indigo-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(99,102,241,0.2)] backdrop-blur-md relative hover:border-indigo-500/50 transition max-w-sm w-full mx-auto md:mx-0">
                         <button onClick={() => setShowMatchId(false)} className="absolute top-2 right-2 text-gray-500 hover:text-white transition"><X size={16}/></button>
                         
