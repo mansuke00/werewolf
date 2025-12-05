@@ -167,7 +167,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
     };
 
     // 部屋作成
-    const handleCreateRoom = async () => { 
+    const handleCreateRoom = async (isDev = false) => { 
         if(!nickname) return setNotification({ message: "名前を入力", type: "error" }); 
         try { 
             const code = Math.floor(1000+Math.random()*9000).toString(); 
@@ -176,22 +176,27 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             await setDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', code), { 
                 hostId: user.uid, hostName: nickname, status: 'waiting', phase: 'lobby', roleSettings: defaultSettings, createdAt: serverTimestamp(), logs: [], anonymousVoting: true, inPersonMode: false 
             }); 
-            await setDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', code, 'players', user.uid), { 
+            
+            const playerData = { 
                 name: nickname, status: 'alive', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() 
-            }); 
+            };
+            // 開発者フラグ（管理者メニューから作成時のみ）
+            if (isDev) playerData.isDev = true;
+
+            await setDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', code, 'players', user.uid), playerData); 
             setRoomCode(code); 
             setView('lobby'); 
         } catch(e){ setNotification({ message: "エラー", type: "error" }); } 
     };
 
     // 参加（プレイヤー or 観戦者）
-    const handleJoinRoom = async (codeToJoin = roomCodeInput) => { 
+    const handleJoinRoom = async (codeToJoin = roomCodeInput, isDev = false) => { 
         if(!nickname || codeToJoin.length!==4) return setNotification({ message: "入力エラー", type: "error" }); 
         
         try { 
             if (homeMode === 'spectate') {
                 const joinSpectatorFn = httpsCallable(functions, 'joinSpectator');
-                await joinSpectatorFn({ roomCode: codeToJoin, nickname: nickname });
+                await joinSpectatorFn({ roomCode: codeToJoin, nickname: nickname, isDev });
                 setRoomCode(codeToJoin);
                 setView('game'); 
                 return;
@@ -212,6 +217,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 lastSeen: serverTimestamp(),
                 isSpectator: false
             };
+            // 開発者フラグ（管理者メニューから参加時のみ）
+            if (isDev) playerData.isDev = true;
 
             await setDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', codeToJoin, 'players', user.uid), playerData); 
             setRoomCode(codeToJoin);
@@ -450,13 +457,20 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
                                 {/* 通常モード（initial）でのみ表示するボタン群 */}
                                 {homeStep === 'initial' && !isAdmin && (
-                                    <div className="flex flex-col md:flex-row gap-3 mt-4 pt-4 border-t border-gray-800">
-                                        <button onClick={() => setHomeStep('spectateRoomList')} className="flex-1 bg-gray-800/50 hover:bg-gray-800 text-gray-300 font-bold py-4 rounded-xl border border-gray-700 transition flex items-center justify-center gap-2 text-sm group">
-                                            <Eye size={18} className="text-blue-400 group-hover:scale-110 transition"/> 途中参加
+                                    <div className="space-y-3 mt-4 pt-4 border-t border-gray-800">
+                                        {/* 新しく追加: 通常プレイヤー用の部屋作成ボタン */}
+                                        <button onClick={() => { setHomeStep('nickname'); setHomeMode('create'); }} className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl shadow-lg hover:scale-[1.02] transition transform text-white font-black text-lg flex flex-col items-center justify-center gap-1 group">
+                                            <span className="flex items-center gap-2"><Crown size={24} /> 部屋を新しく作成</span>
                                         </button>
-                                        <button onClick={() => setView('logs')} className="flex-1 bg-gray-800/50 hover:bg-gray-800 text-gray-300 font-bold py-4 rounded-xl border border-gray-700 transition flex items-center justify-center gap-2 text-sm group">
-                                            <History size={18} className="text-green-400 group-hover:rotate-12 transition"/> 過去のゲーム結果
-                                        </button>
+
+                                        <div className="flex flex-col md:flex-row gap-3">
+                                            <button onClick={() => setHomeStep('spectateRoomList')} className="flex-1 bg-gray-800/50 hover:bg-gray-800 text-gray-300 font-bold py-4 rounded-xl border border-gray-700 transition flex items-center justify-center gap-2 text-sm group">
+                                                <Eye size={18} className="text-blue-400 group-hover:scale-110 transition"/> 途中参加
+                                            </button>
+                                            <button onClick={() => setView('logs')} className="flex-1 bg-gray-800/50 hover:bg-gray-800 text-gray-300 font-bold py-4 rounded-xl border border-gray-700 transition flex items-center justify-center gap-2 text-sm group">
+                                                <History size={18} className="text-green-400 group-hover:rotate-12 transition"/> 過去のゲーム結果
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -517,7 +531,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                             </div>
                             <div className="space-y-4 max-w-sm mx-auto w-full">
                                 <input maxLength={10} type="text" placeholder="名前 (10文字以内)" className="w-full bg-gray-950/50 border border-gray-600 rounded-xl px-6 py-4 text-white text-xl font-bold text-center outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition placeholder-gray-600" value={nickname} onChange={(e) => setNickname(e.target.value)} />
-                                <button onClick={() => { homeMode === 'create' ? handleCreateRoom() : handleJoinRoom() }} className={`w-full py-4 rounded-xl font-bold text-lg text-white shadow-lg transition transform hover:scale-105 active:scale-95 ${homeMode === 'create' ? "bg-gradient-to-r from-purple-600 to-pink-600" : homeMode === 'spectate' ? "bg-gradient-to-r from-gray-600 to-gray-800" : "bg-gradient-to-r from-blue-600 to-cyan-500"}`}>{homeMode === 'create' ? "部屋を作成して開始" : homeMode === 'spectate' ? "観戦する" : "ゲームに参加する"}</button>
+                                <button onClick={() => { homeMode === 'create' ? handleCreateRoom(isAdmin) : handleJoinRoom(undefined, isAdmin) }} className={`w-full py-4 rounded-xl font-bold text-lg text-white shadow-lg transition transform hover:scale-105 active:scale-95 ${homeMode === 'create' ? "bg-gradient-to-r from-purple-600 to-pink-600" : homeMode === 'spectate' ? "bg-gradient-to-r from-gray-600 to-gray-800" : "bg-gradient-to-r from-blue-600 to-cyan-500"}`}>{homeMode === 'create' ? "部屋を作成して開始" : homeMode === 'spectate' ? "観戦する" : "ゲームに参加する"}</button>
                             </div>
                         </div>
                     )}

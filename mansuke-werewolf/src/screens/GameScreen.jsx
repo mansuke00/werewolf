@@ -90,6 +90,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     const isDead = myPlayer?.status === 'dead' || myPlayer?.status === 'vanished' || myPlayer?.isSpectator;
     const isSpectator = myPlayer?.isSpectator;
 
+    // 開発者フラグ
+    const isDev = myPlayer?.isDev === true;
+    const isHost = room.hostId === user.uid;
+    const hasControl = isHost || isDev;
+
     // 通知表示関数（空メッセージは無視、デフォルト3秒）
     const showNotify = (msg, type = "info", duration = 3000) => {
         if (!msg) return;
@@ -492,7 +497,16 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     };
 
     const confirmKickPlayer = (playerId) => {
-        const pName = players.find(p => p.id === playerId)?.name;
+        const targetPlayer = players.find(p => p.id === playerId);
+        const pName = targetPlayer?.name;
+        const isTargetDev = targetPlayer?.isDev;
+
+        // ホストは開発者を追放できない
+        if (isHost && isTargetDev) {
+            showNotify("開発者を追放することはできません", "error");
+            return;
+        }
+
         setModalConfig({
             title: "プレイヤーの追放",
             message: `${pName} さんを追放しますか？\nこの操作は取り消せません。`,
@@ -544,7 +558,6 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     // 役職チャット表示可能者（妖狐・呪われし者・てるてる坊主・狂人は不可）
     // ※狂人は仲間はわかるが、チャットには参加できない仕様
     const canSeeTeamChat = !isDead && ['werewolf', 'greatwolf', 'wise_wolf', 'seer', 'medium', 'knight', 'trapper', 'sage', 'detective', 'assassin'].includes(myRole);
-    const isHost = room.hostId === user.uid;
 
     const archiveButtons = [];
     if(roomDay >= 1) { 
@@ -637,7 +650,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="text-xs text-gray-600 font-bold hidden md:block">ROOM: {roomCode}</div>
-                    {isHost && (
+                    {hasControl && (
                         <div className="flex gap-2">
                             <button onClick={confirmForceAbort} className="bg-red-900/80 text-white border border-red-500 px-3 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition flex items-center gap-2 shadow-lg"><LogOut size={14}/> 強制終了</button>
                             <button onClick={() => setShowKickModal(true)} className="bg-gray-800 text-gray-300 border border-gray-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-700 transition flex items-center gap-2"><UserMinus size={14}/> 追放</button>

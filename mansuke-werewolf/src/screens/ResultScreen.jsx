@@ -34,6 +34,9 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     const logs = room.logs || [];
     
     const isHost = room.hostId === user?.uid;
+    const isDev = myPlayer?.isDev === true;
+    const hasControl = isHost || isDev;
+
     const roomId = room.id || roomCode || "";
     const matchId = room.matchId || "---"; // 試合ID
     
@@ -191,7 +194,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
             setView('home'); // メンテナンスモード画面（ホーム）へ強制遷移
             return;
         }
-        if(!isHost || loading) return;
+        if(!hasControl || loading) return;
         setLoading(true); // ローディング開始
         try {
             const fn = httpsCallable(functions, 'resetToLobby');
@@ -209,7 +212,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
             setView('home');
             return;
         }
-        if(!isHost || loading) return;
+        if(!hasControl || loading) return;
         
         setModalConfig({
             title: "部屋の解散",
@@ -329,7 +332,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                 {/* アクションボタン */}
                 <div className="pt-8 flex flex-col items-center gap-3 w-full max-w-md mx-auto pb-24 md:pb-0">
                       <button onClick={() => setShowDetail(true)} className="w-full px-8 py-3 md:py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm md:text-base"><FileText size={20}/> 詳細ログを確認</button>
-                      {isHost ? (
+                      {hasControl ? (
                           <>
                               <div className="w-full h-px bg-gray-800 my-2"></div>
                               <button 

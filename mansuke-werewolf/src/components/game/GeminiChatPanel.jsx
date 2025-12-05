@@ -49,7 +49,7 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
     useEffect(() => {
         if (!hasInitialized.current && messages.length === 0 && apiKey) {
             hasInitialized.current = true;
-            generateAiResponse();
+            generateAiResponse(null, true); // trueフラグで初回能動的メッセージであることを伝える
         }
     }, [apiKey]);
 
@@ -60,7 +60,7 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
         const logsText = logs.map(l => `[${l.phase}] ${l.text}`).join("\n");
         
         // チャット履歴
-        let chatText = "【生存者チャット履歴】\n";
+        let chatText = "";
         if (inPersonMode) {
             chatText += "(対面モードのためチャット履歴はありません)\n";
         } else if (chatHistory && chatHistory.length > 0) {
@@ -79,44 +79,68 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
         }
 
         // ゲーム情報
-        let rolesText = "【役職配分】\n";
+        let rolesText = "";
         if (roleSettings) Object.entries(roleSettings).forEach(([r, c]) => { if(c>0) rolesText += `${ROLE_DEFINITIONS[r]?.name||r}: ${c}人\n`; });
 
-        let matesText = "【仲間】\n";
+        let matesText = "";
         if (teammates?.length) matesText += teammates.map(t => `${t.name} (${ROLE_DEFINITIONS[t.role]?.name||t.role})`).join(", ") + "\n";
         else matesText += "なし\n";
 
-        let resultText = "【直近のアクション結果】\n";
+        let resultText = "";
         if (lastActionResult?.length) resultText += lastActionResult.map(c => `${c.label}: ${c.value}`).join("\n") + "\n";
         else resultText += "なし\n";
 
-        let survivorsText = "【生存者】\n";
+        let survivorsText = "";
         if (players) {
             const alive = players.filter(p => p.status === 'alive');
             survivorsText += `${alive.map(p => p.name).join(", ")} (残り${alive.length}人)\n`;
         }
 
-        return `
-あなたは人狼ゲームの戦略アドバイザーAIです。
-プレイヤー「${playerName}」の専属コーチとして、勝利のために親身になってアドバイスをしてください。
-現在のプレイヤーの役職は「${ROLE_DEFINITIONS[myRole]?.name || myRole}」です。
+        const myRoleName = ROLE_DEFINITIONS[myRole]?.name || myRole;
+        const myTeam = ROLE_DEFINITIONS[myRole]?.team === 'werewolf' ? '人狼陣営' : ROLE_DEFINITIONS[myRole]?.team === 'citizen' ? '市民陣営' : '第三陣営';
 
-【ゲーム状況】
+        return `
+あなたは人狼ゲームのアドバイザーAIです。
+以下のガイドラインと提供情報を基に、プレイヤー「${playerName}」さんの陣営が勝利するための的確なアドバイスや誘導を行ってください。
+
+【ガイドライン】
+・呼びかける際は必ず「${playerName}さん」としてください。
+・返答は絶対に100文字以内で、簡潔にまとめてください。
+・返答に、##や**などの装飾文字は一切使用しないでください。
+・常に丁寧な会話を心がけ、ずっと敬語を保ってください。
+・前日以前のアドバイスやGeminiとの会話履歴を踏まえた、一貫性のある助言をしてください。
+・「この発言は良かったですね」や「この発言はまずかったかもしれません」など、具体的なチャット内容に基づいたピンポイントな助言を行ってください。
+・提供されたログ以外の情報（神視点のログや他人の役職情報など）は一切知らないものとして振る舞い、あくまでプレイヤー目線でアドバイスを行ってください。
+・会話の中で意図が不明確な場合でも、「よくわかりません」と答えるのではなく、文脈から意図を推測し、その時点で考えられる最善の戦略や振る舞い方を提案してください。
+
+【提供情報】
+プレイヤー名: ${playerName}
+役職: ${myRoleName} (${myTeam})
 現在のフェーズ: ${currentDay}日目の夜
+
+[役職配分]
 ${rolesText}
+
+[生存者]
 ${survivorsText}
+
+[仲間情報]
 ${matesText}
+
+[直近のアクション結果]
 ${resultText}
 
-【ログ】
+[ゲームログ（自分に表示されているログ）]
 ${logsText}
+
+[生存者チャット履歴（過去全て）]
 ${chatText}
 
-建設的かつ優しく、具体的な打開策や振る舞い方を短くアドバイスしてください。メタ発言は控えてください。
+上記の情報は削除せず、毎日アドバイスの有効情報として利用してください。
 `;
     };
 
-    const generateAiResponse = async (userText = null) => {
+    const generateAiResponse = async (userText = null, isFirstMessage = false) => {
         if (!apiKey) {
             // APIキーがない場合のエラーメッセージ（設定UIへの誘導は削除）
             setMessages(prev => [...prev, { 
@@ -130,12 +154,18 @@ ${chatText}
         setIsLoading(true);
         try {
             const systemPrompt = constructSystemPrompt();
-            let promptContent = systemPrompt + "\n\n【会話履歴】\n";
+            let promptContent = systemPrompt + "\n\n【これまでの会話履歴】\n";
             messages.filter(m => m.sender !== 'system').forEach(m => {
                 promptContent += `${m.sender === 'user' ? 'プレイヤー' : 'AI'}: ${m.text}\n`;
             });
-            if (userText) promptContent += `プレイヤー: ${userText}\nAI:`;
-            else promptContent += `AI (最初のアドバイス):`;
+            
+            if (userText) {
+                promptContent += `プレイヤー: ${userText}\nAI:`;
+            } else if (isFirstMessage) {
+                promptContent += `AI (状況を踏まえた最初のアドバイスを100文字以内で):`;
+            } else {
+                promptContent += `AI:`;
+            }
 
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                 method: 'POST',
@@ -149,7 +179,7 @@ ${chatText}
             }
 
             const data = await response.json();
-            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "思考がまとまりませんでした。";
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "思考がまとまりませんでした。申し訳ありません。";
 
             setMessages(prev => [...prev, { id: Date.now()+1, text: aiText, sender: 'ai', timestamp: new Date() }]);
 

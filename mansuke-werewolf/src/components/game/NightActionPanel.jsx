@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../config/firebase.js'; 
-import { Check, Moon, Lock, Loader, XCircle, CheckCircle, Info, Shield, Eye, Skull, Search, Crosshair } from 'lucide-react';
+import { Check, Moon, Lock, Loader, XCircle, CheckCircle, Info, Shield, Eye, Skull, Search, Crosshair, Crown } from 'lucide-react';
 import { ROLE_DEFINITIONS } from '../../constants/gameData.js'; 
 
 export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, teammates, roomCode, roomData, lastActionResult, isDone }) => {
@@ -289,11 +289,19 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
 
         if (!pendingAction && !isLeader) {
             return (
-                <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/30 items-center justify-center text-center">
-                    <div className="flex flex-col items-center">
-                        <Lock size={48} className="text-gray-600 mb-4"/>
-                        <h3 className="text-xl font-bold text-white mb-2">今晩のリーダーは {leaderName} さんです</h3>
-                        <p className="text-gray-400 text-sm">リーダーが代表して対象者を選択します...</p>
+                <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/30 justify-center">
+                    <div className="flex flex-col items-start gap-4">
+                        <div className="bg-purple-900/20 p-3 rounded-full">
+                            <Lock size={32} className="text-purple-400"/>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-white mb-2">{leaderName}が今夜の選択リーダーです</h3>
+                            <div className="text-gray-400 text-sm leading-relaxed space-y-1">
+                                <p>①役職チャットで、誰を選択するかを話し合ってください。</p>
+                                <p>②選択リーダーが、今夜の対象プレイヤーを選択するまでお待ちください。</p>
+                                <p>③選択リーダーから承認の申請が届きます。選択したプレイヤーが正しければ、承認してください。</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             );
@@ -350,6 +358,22 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // ターゲット選択画面
     return (
         <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl ring-4 ring-purple-500/30">
+            {needsConsensus && (
+                <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-xl p-3 mb-4 flex items-start gap-3 shrink-0">
+                    <div className="bg-yellow-500/20 p-2 rounded-full shrink-0">
+                        <Crown size={20} className="text-yellow-400"/>
+                    </div>
+                    <div>
+                        <h4 className="text-yellow-400 font-bold text-sm mb-1">あなたが今夜の選択リーダーです</h4>
+                        <div className="text-xs text-yellow-200/80 space-y-1 leading-relaxed">
+                            <p>①役職チャットで、誰を選択するかを話し合ってください。</p>
+                            <p>②今夜の対象プレイヤーを選択し、決定を押してください。</p>
+                            <p>③他の{['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) ? "人狼" : ROLE_DEFINITIONS[myRole]?.name}チームの方全員からの承認を確認次第、選択完了となります。</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="text-center mb-4 shrink-0">
                 <h3 className="text-lg font-bold text-white flex items-center justify-center gap-2 mb-1">
                     <Moon className="text-purple-400 shrink-0" size={20}/> {prompt}
@@ -357,11 +381,6 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                 {myRole === 'assassin' && (
                     <p className="text-xs text-red-300 bg-red-900/20 px-2 py-1 rounded border border-red-500/30 mb-2">
                         ももすけは1ゲームにつき1人しか存在意義を抹消することができません。注意して能力を活用してください。
-                    </p>
-                )}
-                {needsConsensus && (
-                    <p className="text-xs text-yellow-300 bg-yellow-900/30 px-2 py-1 rounded border border-yellow-500/30">
-                        あなたが今回の選択リーダーです！誰を選択するかを話し合い、チームを代表して選択してください。
                     </p>
                 )}
                 {['knight', 'trapper'].includes(myRole) && myPlayer.lastTarget && (

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Users, Crown, Settings, Mic, Play, Loader, Info, AlertTriangle, LogOut, Trash2, Shield, Moon, Sun, Ghost, Swords, Eye, Skull, Search, User, Crosshair, Smile, Check, Maximize2, Clock, X } from 'lucide-react';
+import { Users, Crown, Settings, Mic, Play, Loader, Info, AlertTriangle, LogOut, Trash2, Shield, Moon, Sun, Ghost, Swords, Eye, Skull, Search, User, Crosshair, Smile, Check, Maximize2, Clock, X, BadgeCheck } from 'lucide-react';
 import { updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase';
@@ -27,7 +27,12 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
         </div>
       );
       
+      // 自分のプレイヤー情報を取得し、開発者フラグを確認
+      const myPlayer = players.find(p => p.id === user?.uid);
+      const isDev = myPlayer?.isDev === true;
       const isHostUser = room.hostId === user?.uid;
+      const hasControl = isHostUser || isDev; // ホストまたは開発者がコントロール可能
+
       const [roleSettings, setRoleSettings] = useState(room.roleSettings || {});
       const [anonymousVoting, setAnonymousVoting] = useState(room.anonymousVoting !== undefined ? room.anonymousVoting : true);
       const [inPersonMode, setInPersonMode] = useState(room.inPersonMode !== undefined ? room.inPersonMode : false);
@@ -118,7 +123,13 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           });
       };
 
-      const confirmKickPlayer = (playerId, playerName) => {
+      const confirmKickPlayer = (playerId, playerName, isTargetDev) => {
+          // ホストは開発者を追放できない（開発者はホストも追放可能）
+          if (isHostUser && isTargetDev) {
+              setNotification({ message: "開発者を追放することはできません", type: "error" });
+              return;
+          }
+
           setModalConfig({
               title: "プレイヤーの追放",
               message: `${playerName} さんを部屋から追放しますか？`,
@@ -140,22 +151,22 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       const handleUpdateSettings = (key, val) => {
           const newSettings = {...roleSettings, [key]: val};
           setRoleSettings(newSettings);
-          if (isHostUser) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { roleSettings: newSettings });
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { roleSettings: newSettings });
       };
       
       const handleUpdateAnonymous = (val) => {
           setAnonymousVoting(val);
-          if (isHostUser) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { anonymousVoting: val });
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { anonymousVoting: val });
       };
 
       const handleUpdateInPersonMode = (val) => {
           setInPersonMode(val);
-          if (isHostUser) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { inPersonMode: val });
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { inPersonMode: val });
       };
 
       const handleUpdateDiscussionTime = (val) => {
           setDiscussionTime(val);
-          if (isHostUser) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { discussionTime: val });
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { discussionTime: val });
       };
 
       // 役職カテゴリー分け
@@ -213,7 +224,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                       <div className="bg-gray-800 p-2 rounded-lg group-hover:bg-blue-500/20 transition"><Maximize2 size={16} className="text-gray-500 group-hover:text-blue-400"/></div>
                                   </div>
                               </div>
-                              {isHostUser ? (
+                              {hasControl ? (
                                   <button onClick={confirmForceClose} className="p-2 text-red-400 hover:bg-red-900/20 rounded-lg transition" title="部屋を解散"><LogOut size={18}/></button>
                               ) : (
                                   <button onClick={confirmLeaveRoom} className="p-2 text-gray-400 hover:bg-gray-800 rounded-lg transition" title="退出"><LogOut size={18}/></button>
@@ -265,14 +276,19 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                       <div className="flex items-center gap-3 overflow-hidden">
                                           <div className={`w-2 h-2 rounded-full shrink-0 ${isPlayerOnline(p) ? "bg-green-500 shadow-[0_0_8px_#22c55e]" : "bg-gray-600"}`}></div>
                                           <div className="flex flex-col min-w-0">
-                                              <span className={`font-bold text-sm truncate ${isPlayerOnline(p) ? "text-gray-200" : "text-gray-500"}`}>{p.name}</span>
+                                              <div className="flex items-center gap-2">
+                                                  <span className={`font-bold text-sm truncate ${isPlayerOnline(p) ? "text-gray-200" : "text-gray-500"}`}>{p.name}</span>
+                                                  {p.isDev && <span className="text-[10px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30 flex items-center gap-0.5"><BadgeCheck size={10}/> 開発者</span>}
+                                              </div>
                                               {p.isSpectator && <span className="text-[9px] text-purple-400">観戦者</span>}
                                           </div>
                                       </div>
                                       <div className="flex items-center gap-1">
                                           {room.hostId === p.id && <Crown size={14} className="text-yellow-500"/>}
-                                          {isHostUser && room.hostId !== p.id && (
-                                              <button onClick={() => confirmKickPlayer(p.id, p.name)} className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/20 rounded transition" title="追放">
+                                          {hasControl && p.id !== user.uid && (
+                                              // ホストは開発者を追放できないチェックは confirmKickPlayer 内で行う
+                                              // UI上は開発者に対してもゴミ箱アイコンを表示しておく（ただしホストには無効であることを通知）
+                                              <button onClick={() => confirmKickPlayer(p.id, p.name, p.isDev)} className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/20 rounded transition" title="追放">
                                                   <Trash2 size={14}/>
                                               </button>
                                           )}
@@ -334,9 +350,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                               </p>
                                               
                                               <div className="mt-auto flex items-center justify-between bg-black/30 rounded-lg p-1 shrink-0">
-                                                  {isHostUser && <button onClick={() => handleUpdateSettings(key, Math.max(0, count - 1))} className="w-7 h-7 flex items-center justify-center rounded bg-gray-700/50 hover:bg-gray-600 text-gray-400 hover:text-white transition">-</button>}
+                                                  {hasControl && <button onClick={() => handleUpdateSettings(key, Math.max(0, count - 1))} className="w-7 h-7 flex items-center justify-center rounded bg-gray-700/50 hover:bg-gray-600 text-gray-400 hover:text-white transition">-</button>}
                                                   <span className={`flex-1 text-center font-black text-lg ${count > 0 ? "text-white" : "text-gray-600"}`}>{count}</span>
-                                                  {isHostUser && <button onClick={() => handleUpdateSettings(key, count + 1)} className="w-7 h-7 flex items-center justify-center rounded bg-gray-700/50 hover:bg-gray-600 text-gray-400 hover:text-white transition">+</button>}
+                                                  {hasControl && <button onClick={() => handleUpdateSettings(key, count + 1)} className="w-7 h-7 flex items-center justify-center rounded bg-gray-700/50 hover:bg-gray-600 text-gray-400 hover:text-white transition">+</button>}
                                               </div>
                                           </div>
                                       );
@@ -355,11 +371,11 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                           <p className="text-xs text-gray-400 mt-1">昼フェーズの議論時間を設定します</p>
                                       </div>
                                       <div className="flex items-center gap-2">
-                                          {isHostUser && (
+                                          {hasControl && (
                                               <button onClick={() => handleUpdateDiscussionTime(Math.max(60, discussionTime - 10))} className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center transition">-</button>
                                           )}
                                           <span className="font-mono font-black text-xl w-16 text-center">{discussionTime}<span className="text-xs text-gray-500 ml-1">s</span></span>
-                                          {isHostUser && (
+                                          {hasControl && (
                                               <button onClick={() => handleUpdateDiscussionTime(discussionTime + 10)} className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center transition">+</button>
                                           )}
                                       </div>
@@ -371,7 +387,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                           <h4 className="font-bold text-white flex items-center gap-2 text-sm md:text-base"><Settings size={18}/> 匿名投票モード</h4>
                                           <p className="text-xs text-gray-400 mt-1 leading-relaxed">昼の投票において、誰が誰に投票したかを伏せて開票します。</p>
                                       </div>
-                                      {isHostUser ? (
+                                      {hasControl ? (
                                           <button onClick={() => handleUpdateAnonymous(!anonymousVoting)} className={`w-14 h-7 rounded-full transition-colors relative shrink-0 ${anonymousVoting ? "bg-green-500" : "bg-gray-700"}`}>
                                               <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all shadow-md ${anonymousVoting ? "left-8" : "left-1"}`}></div>
                                           </button>
@@ -389,7 +405,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                               役職チャット・霊界チャット・Gemini AI Chatはそのまま利用できます。
                                           </p>
                                       </div>
-                                      {isHostUser ? (
+                                      {hasControl ? (
                                           <button onClick={() => handleUpdateInPersonMode(!inPersonMode)} className={`w-14 h-7 rounded-full transition-colors relative shrink-0 ${inPersonMode ? "bg-green-500" : "bg-gray-700"}`}>
                                               <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all shadow-md ${inPersonMode ? "left-8" : "left-1"}`}></div>
                                           </button>
@@ -409,7 +425,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
 
                       {/* フッターアクションエリア */}
                       <div className="p-4 border-t border-gray-800 bg-gray-900/50 backdrop-blur shrink-0">
-                          {isHostUser ? (
+                          {hasControl ? (
                               <div className="flex flex-col gap-2">
                                   {validationError && (
                                       <div className="flex items-center justify-center gap-2 text-red-400 text-xs font-bold bg-red-900/20 py-2 rounded-lg mb-2">

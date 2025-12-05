@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc, Hash, Filter, RefreshCw, Trash2 } from 'lucide-react';
+import { Search, ArrowLeft, Loader, FileText, Clock, Trophy, AlertOctagon, Calendar, List, MessageSquare, ChevronRight, XCircle, User, Users, LayoutGrid, SortAsc, Hash, Filter, RefreshCw, Trash2, Crown } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy, Timestamp, collectionGroup, getDoc, doc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
@@ -471,9 +471,14 @@ export const LogViewerScreen = ({ setView }) => {
                                                             <span className="text-[9px] md:text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20 font-bold uppercase">Aborted</span>
                                                         )}
                                                     </div>
-                                                    <span className="text-[10px] text-gray-500 font-mono mt-1 flex items-center gap-1">
-                                                        <Clock size={10}/> {new Date(getMillis(m.createdAt)).toLocaleString()}
-                                                    </span>
+                                                    <div className="flex flex-col gap-0.5 mt-1">
+                                                        <span className="text-[10px] text-gray-500 font-mono flex items-center gap-1">
+                                                            <Clock size={10}/> {new Date(getMillis(m.createdAt)).toLocaleString()}
+                                                        </span>
+                                                        <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                                                            <Crown size={10} className="text-yellow-600"/> Host: {m.hostName || "不明"}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4 md:gap-6 shrink-0 text-right">
