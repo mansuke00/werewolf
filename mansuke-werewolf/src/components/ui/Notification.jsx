@@ -1,51 +1,72 @@
 import React, { useEffect, useState } from 'react';
-import { Info, AlertCircle, CheckCircle, Bell, X } from 'lucide-react';
+import { X, Info, CheckCircle, AlertTriangle, AlertCircle } from 'lucide-react';
 
-// 右上の通知トースト
-// 修正：タイムバーや過剰なスタイルを削除し、視認性の高いシンプルなデザインに戻しました
-// レスポンシブ対応：画面幅に合わせたサイズ調整と配置（スマホでは上部中央、PCでは右上）を行っています
 export const Notification = ({ message, type = 'info', duration = 3000, onClose }) => {
-  const [show, setShow] = useState(true);
+    const [isVisible, setIsVisible] = useState(true);
+    const [isRemoving, setIsRemoving] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShow(false);
-      setTimeout(onClose, 300);
-    }, duration);
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
+    // 自動消去タイマー
+    useEffect(() => {
+        if (duration && duration > 0) {
+            const timer = setTimeout(() => {
+                handleClose();
+            }, duration);
+            return () => clearTimeout(timer);
+        }
+    }, [duration]);
 
-  // タイプに応じたシンプルな配色
-  let bgClass = "bg-gray-800 text-white border-gray-600";
-  let Icon = Bell;
+    const handleClose = () => {
+        setIsRemoving(true);
+        // アニメーションの時間(300ms)待ってから完全に閉じる
+        setTimeout(() => {
+            if (onClose) onClose();
+        }, 300);
+    };
 
-  if (type === 'success') {
-      bgClass = "bg-green-800 text-white border-green-600";
-      Icon = CheckCircle;
-  } else if (type === 'error') {
-      bgClass = "bg-red-800 text-white border-red-600";
-      Icon = AlertCircle;
-  } else if (type === 'info') {
-      bgClass = "bg-blue-800 text-white border-blue-600";
-      Icon = Info;
-  } else if (type === 'warning') {
-      bgClass = "bg-yellow-800 text-white border-yellow-600";
-      Icon = AlertCircle;
-  }
+    // タイプ別スタイル設定
+    let Icon = Info;
+    let containerClass = "bg-gray-800/90 border-gray-600/50 text-blue-100";
+    let iconColor = "text-blue-400";
 
-  return (
-    <div className={`fixed top-4 right-0 md:right-4 left-0 md:left-auto z-[300] flex justify-center md:justify-end pointer-events-none transition-all duration-300 transform ${show ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'}`}>
-      <div className={`pointer-events-auto shadow-xl rounded-lg border p-4 max-w-sm w-[90%] md:w-80 flex items-start gap-3 ${bgClass}`}>
-        <div className="shrink-0 mt-0.5">
-            <Icon size={20} />
+    switch (type) {
+        case 'success':
+            Icon = CheckCircle;
+            containerClass = "bg-green-900/90 border-green-500/50 text-green-100";
+            iconColor = "text-green-400";
+            break;
+        case 'error':
+            Icon = AlertCircle;
+            containerClass = "bg-red-900/90 border-red-500/50 text-red-100";
+            iconColor = "text-red-400";
+            break;
+        case 'warning':
+            Icon = AlertTriangle;
+            containerClass = "bg-yellow-900/90 border-yellow-500/50 text-yellow-100";
+            iconColor = "text-yellow-400";
+            break;
+        default:
+            // info default
+            break;
+    }
+
+    return (
+        <div 
+            className={`fixed top-4 right-4 z-[150] max-w-sm w-full md:w-auto md:min-w-[300px] transition-all duration-300 transform ${
+                isRemoving ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'
+            }`}
+        >
+            <div className={`flex items-start gap-3 p-4 rounded-xl border shadow-xl backdrop-blur-md ${containerClass}`}>
+                <Icon className={`shrink-0 mt-0.5 ${iconColor}`} size={20} />
+                <div className="flex-1 pt-0.5">
+                    <p className="text-sm font-bold leading-relaxed">{message}</p>
+                </div>
+                <button 
+                    onClick={handleClose} 
+                    className="text-white/50 hover:text-white transition shrink-0 p-0.5 hover:bg-white/10 rounded"
+                >
+                    <X size={16} />
+                </button>
+            </div>
         </div>
-        <div className="flex-1 text-sm font-bold leading-relaxed break-words">
-            {message}
-        </div>
-        <button onClick={() => setShow(false)} className="shrink-0 opacity-70 hover:opacity-100 transition">
-            <X size={16} />
-        </button>
-      </div>
-    </div>
-  );
+    );
 };

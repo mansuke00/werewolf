@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Sparkles, User, Cpu, Info } from 'lucide-react';
+import { Send, Sparkles, User, Cpu, Info, ArrowUp } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase.js';
 import { ROLE_DEFINITIONS } from '../../constants/gameData.js';
+import { getMillis } from '../../utils/helpers';
 
 export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, currentDay, messages, setMessages }) => {
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [apiKey, setApiKey] = useState("");
     const messagesEndRef = useRef(null);
-    const hasInitialized = useRef(false);
+    
+    // その日の夜に既にAIから話しかけたかを管理するRef
+    // 初期値は0（まだどの夜も話しかけていない）
+    const lastGreetedDay = useRef(0);
 
     // 自動スクロール
     const scrollToBottom = () => {
@@ -21,7 +25,6 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
     }, [messages, isLoading]);
 
     // APIキーの取得（Firestore または LocalStorage）
-    // 設定UIは削除しましたが、裏側での取得ロジックは維持します
     useEffect(() => {
         const fetchApiKey = async () => {
             // 1. LocalStorageを確認（以前入力されたものがあれば）
@@ -45,13 +48,16 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
         fetchApiKey();
     }, []);
 
-    // 初回メッセージ生成（APIキー取得後かつ未実行の場合のみ）
+    // 毎晩の能動的メッセージ生成
+    // APIキーがあり、かつ「現在の夜」にまだ挨拶していない場合に実行
     useEffect(() => {
-        if (!hasInitialized.current && messages.length === 0 && apiKey) {
-            hasInitialized.current = true;
-            generateAiResponse(null, true); // trueフラグで初回能動的メッセージであることを伝える
+        if (apiKey && currentDay > lastGreetedDay.current) {
+            // 既にメッセージ履歴があり、最新がAIからのその日の発言であればスキップ（二重送信防止の念のため）
+            // ただしGeminiChatPanelは夜の間マウントされ続ける前提なので、基本はRef判定で十分
+            lastGreetedDay.current = currentDay;
+            generateAiResponse(null, true); // trueフラグで能動的メッセージであることを伝える
         }
-    }, [apiKey]);
+    }, [apiKey, currentDay]);
 
     const constructSystemPrompt = () => {
         const { myRole, logs, chatHistory, roleSettings, teammates, lastActionResult, players } = gameContext;
@@ -142,7 +148,7 @@ ${chatText}
 
     const generateAiResponse = async (userText = null, isFirstMessage = false) => {
         if (!apiKey) {
-            // APIキーがない場合のエラーメッセージ（設定UIへの誘導は削除）
+            // APIキーがない場合のエラーメッセージ
             setMessages(prev => [...prev, { 
                 id: Date.now(), 
                 text: "APIキーが設定されていません。チャットボット機能は現在利用できません。", 
@@ -162,7 +168,7 @@ ${chatText}
             if (userText) {
                 promptContent += `プレイヤー: ${userText}\nAI:`;
             } else if (isFirstMessage) {
-                promptContent += `AI (状況を踏まえた最初のアドバイスを100文字以内で):`;
+                promptContent += `AI (状況を踏まえた${currentDay}日目の夜の最初のアドバイスを100文字以内で):`;
             } else {
                 promptContent += `AI:`;
             }
@@ -196,23 +202,30 @@ ${chatText}
         }
     };
 
-    const handleSendMessage = async () => {
+    const handleSendMessage = async (e) => {
+        if (e) e.preventDefault();
         if (!input.trim() || isLoading) return;
+        
+        if (input.length > 50) {
+            alert("メッセージは50文字以内で入力してください。");
+            return;
+        }
+
         const userMsg = { id: Date.now(), text: input, sender: 'user', timestamp: new Date() };
         setMessages(prev => [...prev, userMsg]);
         setInput("");
         await generateAiResponse(input);
     };
 
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
-        }
+    // チャットバブルのスタイル決定（通常のチャットパネルに合わせる）
+    const getMsgBubbleStyle = (sender) => {
+        if (sender === 'user') return "bg-blue-600 text-white rounded-br-sm shadow-blue-900/20";
+        if (sender === 'ai') return "bg-indigo-900/60 border border-indigo-500/30 text-indigo-100 rounded-bl-sm shadow-indigo-900/20"; // AIはインディゴ系で区別
+        return "bg-red-900/40 text-red-200 border border-red-500/30 rounded-bl-sm"; // システムメッセージ
     };
 
     return (
-        <div className="flex flex-col h-full bg-gray-900/80 rounded-2xl border border-indigo-500/30 overflow-hidden shadow-xl">
+        <div className="flex flex-col h-full bg-gray-900/60 backdrop-blur-xl rounded-2xl border border-indigo-500/30 overflow-hidden shadow-xl">
             {/* ヘッダー */}
             <div className="p-3 bg-indigo-900/40 border-b border-indigo-500/30 flex flex-col gap-2 shrink-0">
                 <div className="flex items-center justify-between">
@@ -233,73 +246,70 @@ ${chatText}
                 </div>
             </div>
 
-            {/* チャットエリア - 吹き出しを廃止し、ログ形式に変更 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/20">
-                {messages.map((msg) => (
-                    <div key={msg.id} className="flex gap-3 animate-fade-in group">
-                        {/* アイコン */}
-                        <div className={`mt-1 shrink-0 w-6 h-6 rounded-full flex items-center justify-center border ${
-                            msg.sender === 'user' ? 'bg-gray-700 border-gray-600' : 
-                            msg.sender === 'system' ? 'bg-red-900 border-red-700' : 
-                            'bg-indigo-900 border-indigo-500'
-                        }`}>
-                            {msg.sender === 'user' ? <User size={12} className="text-gray-300"/> : 
-                             msg.sender === 'system' ? <Info size={12} className="text-red-300"/> : 
-                             <Cpu size={12} className="text-indigo-300"/>}
-                        </div>
-                        
-                        {/* テキストコンテンツ（左寄せ） */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-baseline gap-2 mb-0.5">
-                                <span className={`text-[10px] font-bold ${
-                                    msg.sender === 'user' ? 'text-gray-400' : 
-                                    msg.sender === 'system' ? 'text-red-400' : 
-                                    'text-indigo-300'
-                                }`}>
-                                    {msg.sender === 'user' ? playerName : msg.sender === 'system' ? 'SYSTEM' : 'Gemini'}
-                                </span>
-                                <span className="text-[9px] text-gray-600">
-                                    {msg.timestamp ? msg.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
-                                </span>
-                            </div>
-                            <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
+            {/* チャットエリア - 吹き出しスタイルに変更 */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/10">
+                {messages.map((msg, idx) => {
+                    const isMe = msg.sender === 'user';
+                    // 連続投稿時の名前表示制御（前のメッセージと送信者が違う場合のみ表示）
+                    const showName = idx === 0 || messages[idx-1].sender !== msg.sender;
+                    
+                    return (
+                        <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-fade-in`}>
+                            {showName && (
+                                <div className="flex items-baseline gap-2 mb-1 ml-1">
+                                    <span className={`text-[10px] font-bold ${
+                                        msg.sender === 'user' ? 'text-gray-400' : 
+                                        msg.sender === 'system' ? 'text-red-400' : 
+                                        'text-indigo-300'
+                                    }`}>
+                                        {msg.sender === 'user' ? playerName : msg.sender === 'system' ? 'SYSTEM' : 'Gemini'}
+                                    </span>
+                                </div>
+                            )}
+                            <div className={`px-3 py-2 md:px-4 md:py-2.5 rounded-2xl max-w-[85%] break-words text-xs md:text-sm font-medium shadow-md leading-relaxed ${getMsgBubbleStyle(msg.sender)}`}>
                                 {msg.text}
                             </div>
+                            <span className="text-[9px] text-gray-600 mt-1 px-1 opacity-60">
+                                {msg.timestamp ? msg.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
+                            </span>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
                 
                 {isLoading && (
-                    <div className="flex gap-3 animate-pulse opacity-70">
-                        <div className="mt-1 shrink-0 w-6 h-6 rounded-full bg-indigo-900/50 border border-indigo-500/30 flex items-center justify-center">
-                            <Cpu size={12} className="text-indigo-400"/>
+                    <div className="flex flex-col items-start animate-pulse opacity-70">
+                        <div className="flex items-baseline gap-2 mb-1 ml-1">
+                             <span className="text-[10px] font-bold text-indigo-300">Gemini</span>
                         </div>
-                        <div className="text-xs text-indigo-400 flex items-center h-6">考え中...</div>
+                        <div className="bg-indigo-900/40 border border-indigo-500/20 px-3 py-2 rounded-2xl rounded-bl-sm text-xs text-indigo-300 flex items-center gap-2">
+                            <Cpu size={12} className="animate-spin"/> 考え中...
+                        </div>
                     </div>
                 )}
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* 入力エリア */}
-            <div className="p-3 bg-gray-900/90 border-t border-gray-800 shrink-0">
-                <div className="flex gap-2 relative">
-                    <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="相談内容を入力..."
-                        className="w-full bg-gray-800 text-white rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 border border-gray-700 resize-none h-12 custom-scrollbar"
+            {/* 入力エリア - ChatPanelと同じスタイルに統一 */}
+            <form onSubmit={handleSendMessage} className="p-2 md:p-3 bg-gray-900/40 backdrop-blur-md flex gap-2 border-t border-indigo-500/30 shrink-0">
+                <div className="relative flex-1">
+                    <input 
+                        className="w-full bg-gray-800/80 border border-gray-600 rounded-xl pl-3 pr-8 py-2 md:pl-4 md:pr-10 md:py-3 text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition outline-none text-xs md:text-sm placeholder-gray-500"
+                        placeholder="相談内容を入力 (50文字以内)..."
+                        maxLength={50}
+                        value={input} 
+                        onChange={e => setInput(e.target.value)}
                         disabled={isLoading}
                     />
-                    <button 
-                        onClick={handleSendMessage}
-                        disabled={!input.trim() || isLoading}
-                        className="absolute right-2 top-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                    >
-                        <Send size={16} />
-                    </button>
+                    <div className={`absolute right-3 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full transition-colors ${input.length > 40 ? "bg-red-500" : input.length > 0 ? "bg-green-500" : "bg-gray-600"}`}></div>
                 </div>
-            </div>
+                <button 
+                    type="submit" 
+                    disabled={!input.trim() || isLoading}
+                    className="bg-indigo-600 w-10 md:w-12 h-full rounded-xl text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center shadow-lg active:scale-95 shrink-0"
+                >
+                    <ArrowUp size={18} md:size={20} strokeWidth={3}/>
+                </button>
+            </form>
         </div>
     );
 };

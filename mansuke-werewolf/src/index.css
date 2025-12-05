@@ -4,7 +4,8 @@
 
 @layer base {
   body {
-    @apply bg-gray-950 text-gray-100 antialiased overflow-hidden;
+    @apply bg-gray-950 text-gray-100 antialiased;
+    /* overflow-hidden を削除しました */
     /* モバイルでのスクロールバウンスなどを抑制 */
     overscroll-behavior-y: none;
   }

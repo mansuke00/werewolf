@@ -219,7 +219,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                             <div className="absolute top-0 left-0 w-full bg-red-600 text-white text-sm font-bold py-1 px-4 text-center">
                                 {room.executionResult}
                             </div>
-                            <div className="bg-black/50 p-6 rounded-full border-2 border-red-500 shadow-xl relative z-10 animate-bounce-slow mt-4">
+                            <div className="bg-black/50 p-6 rounded-full border-2 border-red-500 shadow-xl relative z-10 mt-4">
                                 <Skull size={64} className="text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"/>
                             </div>
                             <div className="text-center space-y-4 relative z-10">
@@ -284,7 +284,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                  <div className="absolute top-0 left-0 w-full bg-red-600 text-white text-sm font-bold py-1 px-4 text-center">
                                      {room.deathResult}
                                  </div>
-                                 <div className="bg-black/50 p-6 rounded-full border-2 border-red-500 shadow-xl relative z-10 animate-bounce-slow mt-4">
+                                 <div className="bg-black/50 p-6 rounded-full border-2 border-red-500 shadow-xl relative z-10 mt-4">
                                      <Skull size={64} className="text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"/>
                                  </div>
                                  <div className="text-center space-y-4 relative z-10">
@@ -580,7 +580,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     };
 
     return (
-        <div className="lg:h-screen min-h-screen flex flex-col bg-gray-950 text-gray-100 font-sans lg:overflow-hidden">
+        // 修正: lg:h-screen を削除、lg:overflow-hidden を削除し、スクロール可能に
+        <div className="lg:h-screen min-h-screen flex flex-col bg-gray-950 text-gray-100 font-sans lg:overflow-y-auto">
             {modalConfig && <ConfirmationModal {...modalConfig} />}
             {overlay && <OverlayNotification {...overlay} />}
             {notificationLocal && <Notification {...notificationLocal} onClose={() => setNotificationLocal(null)} />}
@@ -611,7 +612,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
                     <div className="bg-gray-900 border-2 border-red-600 rounded-3xl p-8 max-w-lg w-full text-center space-y-6 shadow-2xl animate-fade-in-up flex flex-col max-h-[85vh]">
                         <div className="flex flex-col items-center justify-center gap-2 text-red-500 mb-2 shrink-0">
-                            <Gavel size={48} className="animate-bounce" />
+                            <Gavel size={48} className="text-red-500" />
                             <h2 className="text-4xl font-black tracking-widest">VOTE</h2>
                         </div>
                         <p className="text-gray-300 mb-4 shrink-0 font-bold">{timeLeft > 0 ? "本日の処刑者を選んでください" : "投票を締め切りました"}<br/><span className="text-sm text-red-400">残り {timeLeft}秒</span></p>
@@ -636,8 +637,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 </div>
             )}
             
-            {isVoting && hasVoted && <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4"><div className="text-center animate-pulse"><CheckCircle size={64} className="text-green-500 mx-auto mb-4"/><h2 className="text-3xl font-bold text-white mb-2">投票完了</h2><p className="text-gray-400">結果発表を待っています...</p></div></div>}
-            {isVoting && isDead && <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 text-center animate-pulse pointer-events-none w-full"><Gavel size={48} className="text-gray-500 mx-auto mb-2"/><h2 className="text-xl font-bold text-gray-300">現在生存者は投票を行っています...</h2></div>}
+            {isVoting && hasVoted && <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4"><div className="text-center"><CheckCircle size={64} className="text-green-500 mx-auto mb-4"/><h2 className="text-3xl font-bold text-white mb-2">投票完了</h2><p className="text-gray-400">結果発表を待っています...</p></div></div>}
+            {isVoting && isDead && <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 text-center pointer-events-none w-full"><Gavel size={48} className="text-gray-500 mx-auto mb-2"/><h2 className="text-xl font-bold text-gray-300">現在生存者は投票を行っています...</h2></div>}
 
             <header className="flex-none flex items-center justify-between p-3 border-b border-gray-800 bg-gray-950/80 backdrop-blur z-40">
                 <div className="flex items-center gap-4">
@@ -660,7 +661,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
             </header>
 
             {/* スマホ対応: 縦積みレイアウト、スクロール可能、高さ調整 */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0 overflow-y-auto lg:overflow-hidden">
+            {/* 修正: lg:overflow-hidden を削除 */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0 overflow-y-auto">
                 <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-auto shrink-0">
                     {isDead || isSpectator ? <DeadPlayerInfoPanel players={displayPlayers} /> : <MiniRoleCard role={myRole} teammates={teammates || []} originalRole={originalRole} />}
                     

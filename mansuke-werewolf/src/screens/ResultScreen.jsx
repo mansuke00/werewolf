@@ -109,8 +109,14 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
 
             // 通常の勝利判定
             if (isFoxWin) { if(role === 'fox') return true; }
-            else if (isWerewolfWin) { if(['werewolf', 'greatwolf', 'madman'].includes(role)) return true; }
-            else if (isCitizenWin) { if(!['werewolf', 'greatwolf', 'madman', 'fox', 'teruteru'].includes(role)) return true; }
+            else if (isWerewolfWin) { 
+                // 賢狼(wise_wolf)を追加
+                if(['werewolf', 'greatwolf', 'wise_wolf', 'madman'].includes(role)) return true; 
+            }
+            else if (isCitizenWin) { 
+                // 賢狼(wise_wolf)も除外対象に追加（市民側ではない）
+                if(!['werewolf', 'greatwolf', 'wise_wolf', 'madman', 'fox', 'teruteru'].includes(role)) return true; 
+            }
 
             // てるてる坊主の追加勝利判定（全員処刑されていたら勝利）
             if (role === 'teruteru' && isTeruteruWin) {
@@ -128,7 +134,8 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         personalResult = 'draw';
     } else if (myTrueRole) {
         const myRoleKey = myTrueRole;
-        const isMySideWolf = ['werewolf', 'greatwolf', 'madman'].includes(myRoleKey);
+        // 賢狼(wise_wolf)を追加
+        const isMySideWolf = ['werewolf', 'greatwolf', 'wise_wolf', 'madman'].includes(myRoleKey);
         const isMySideFox = myRoleKey === 'fox';
         const isTeruteru = myRoleKey === 'teruteru';
         
@@ -155,7 +162,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         if (isCitizenWin) { titleGradient = "from-yellow-400 to-orange-500"; }
         else if (isFoxWin) { titleGradient = "from-orange-400 to-pink-500"; }
         else { titleGradient = "from-red-500 to-purple-600"; }
-        mainTitle = "GAME SET"; // 指示通り観戦者はGAME SETに変更
+        mainTitle = "GAME SET"; 
     } else {
         // プレイヤーの場合
         if (personalResult === 'win') {
@@ -278,11 +285,11 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     
                     {/* 勝利アイコン表示エリア */}
                     {isAborted ? (
-                        <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4 animate-pulse"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
+                        <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
                     ) : (
                         <div className="inline-block p-4 rounded-full bg-gray-800/50 mb-2 md:mb-4 relative">
-                            {isCitizenWin ? <Sun size={48} md:size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={48} md:size={64} className="text-orange-500 animate-pulse"/> : <Moon size={48} md:size={64} className="text-red-500"/>}
-                            {isTeruteruWin && <Smile size={24} md:size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50 animate-bounce"/>}
+                            {isCitizenWin ? <Sun size={48} md:size={64} className="text-yellow-400"/> : isFoxWin ? <Sparkles size={48} md:size={64} className="text-orange-500"/> : <Moon size={48} md:size={64} className="text-red-500"/>}
+                            {isTeruteruWin && <Smile size={24} md:size={32} className="text-green-400 absolute -bottom-2 -right-2 bg-gray-900 rounded-full border border-green-500/50"/>}
                         </div>
                     )}
                     
@@ -386,8 +393,8 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                                 onClick={copyMatchId}
                                 className="w-full relative flex items-center justify-between bg-black/40 px-3 py-2 rounded-xl border border-white/10 hover:bg-black/60 hover:border-indigo-400/50 transition group"
                             >
-                                <span className="text-xl font-mono font-black text-white tracking-widest group-hover:text-indigo-200">{matchId}</span>
-                                <div className="flex items-center gap-1 text-[10px] text-gray-500 group-hover:text-white transition">
+                                <span className="text-base md:text-xl font-mono font-black text-white tracking-widest group-hover:text-indigo-200 whitespace-nowrap overflow-hidden text-ellipsis mr-2">{matchId}</span>
+                                <div className="flex items-center gap-1 text-[10px] text-gray-500 group-hover:text-white transition shrink-0">
                                     <Copy size={12}/> COPY
                                 </div>
                                 <div id="copy-feedback" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow opacity-0 transition-opacity pointer-events-none whitespace-nowrap">Copied!</div>

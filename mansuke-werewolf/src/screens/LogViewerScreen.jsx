@@ -56,16 +56,21 @@ export const LogViewerScreen = ({ setView }) => {
                 const hasNameSearch = !!searchName.trim();
                 const hasDateSearch = !!targetDate;
 
+                // 修正: ステータスで絞り込みを行い、ゲームとして成立したもの（finished, closed, aborted）のみを取得
+                const validStatuses = ['finished', 'closed', 'aborted'];
+
                 if (!hasNameSearch && !hasDateSearch) {
                     const recentQuery = query(
                         collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'),
+                        where('status', 'in', validStatuses),
                         orderBy('createdAt', 'desc'),
                         limit(50)
                     );
                     const snapshot = await getDocs(recentQuery);
+                    // さらに念のためmatchIdがあるものだけにフィルタリング
                     const results = snapshot.docs
                         .map(d => ({ id: d.id, ...d.data() }))
-                        .filter(d => ['finished', 'closed', 'aborted'].includes(d.status) && d.matchId);
+                        .filter(d => d.matchId);
                     
                     if (results.length === 0) setError("データが見つかりませんでした。");
                     else setMatchList(results);
@@ -107,6 +112,7 @@ export const LogViewerScreen = ({ setView }) => {
 
                     const dateQuery = query(
                         collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'), 
+                        where('status', 'in', validStatuses),
                         where('createdAt', '>=', Timestamp.fromDate(start)),
                         where('createdAt', '<', Timestamp.fromDate(end)),
                         orderBy('createdAt', 'desc')
@@ -115,7 +121,7 @@ export const LogViewerScreen = ({ setView }) => {
                     promises.push(getDocs(dateQuery).then(snapshot => 
                         snapshot.docs
                             .map(d => ({ id: d.id, ...d.data() }))
-                            .filter(d => ['finished', 'closed', 'aborted'].includes(d.status) && d.matchId)
+                            .filter(d => d.matchId)
                     ));
                 } else {
                     promises.push(Promise.resolve(null));
@@ -133,17 +139,14 @@ export const LogViewerScreen = ({ setView }) => {
                 } else if (hasNameSearch) {
                     // 名前検索のみ
                     if (nameMatchIds.size > 0) {
-                        // IDリストから部屋詳細を取得（最大20件程度に制限しないと大量リードになるため注意が必要だが、ここでは一旦そのまま）
-                        // Firestoreのin句は10個までなので、forループで取得
+                        // IDリストから部屋詳細を取得
                         const idArray = Array.from(nameMatchIds);
-                        // 最新のものから取得したいが、IDだけでは順序不明。IDリストが多い場合は全取得はコストが高い。
-                        // ここでは簡易的に、IDリストの件数が多い場合は警告を出すか、制限する
                         const limitedIds = idArray.slice(0, 20); // 20件制限
                         
                         const roomPromises = limitedIds.map(id => getDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', id)));
                         const roomSnaps = await Promise.all(roomPromises);
                         finalResults = roomSnaps
-                            .filter(s => s.exists() && ['finished', 'closed', 'aborted'].includes(s.data().status))
+                            .filter(s => s.exists() && validStatuses.includes(s.data().status) && s.data().matchId)
                             .map(s => ({ id: s.id, ...s.data() }));
                     }
                 } else if (hasDateSearch) {
@@ -588,7 +591,7 @@ export const LogViewerScreen = ({ setView }) => {
                         {/* 右カラム: 詳細ログ（対面モード時は幅広にする） */}
                         <div className={`flex-1 flex flex-col min-h-0 h-full bg-gray-900/60 rounded-3xl border border-gray-700/50 overflow-hidden relative shadow-lg ${searchResult.room.inPersonMode ? 'md:max-w-[66%]' : 'md:max-w-[33%]'} ${detailTab !== 'log' ? 'hidden md:flex' : 'flex'}`}>
                             <div className="flex-1 overflow-hidden">
-                                <LogPanel logs={searchResult.room.logs} showSecret={true} user={{uid:'all'}} />
+                                <LogPanel logs={searchResult.room.logs} showSecret={true} user={{uid: 'all'}} />
                             </div>
                         </div>
                     </div>

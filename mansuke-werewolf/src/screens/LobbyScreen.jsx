@@ -196,7 +196,8 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       );
 
       return (
-          <div className="h-screen w-full bg-gray-950 text-gray-100 font-sans relative overflow-hidden flex flex-col">
+          // 修正: h-screen -> min-h-screen, overflow-hidden を削除し、overflow-x-hidden に変更
+          <div className="min-h-screen w-full bg-gray-950 text-gray-100 font-sans relative overflow-x-hidden flex flex-col">
               {modalConfig && <ConfirmationModal {...modalConfig} />}
               
               {/* ルームコード拡大表示モーダル */}
@@ -219,8 +220,8 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
               </div>
 
               {/* メインコンテンツ - 2カラムレイアウト (左: 部屋情報/プレイヤー, 右: 設定) */}
-              {/* スマホ対応: grid-cols-1, h-auto, overflow-y-auto */}
-              <div className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 min-h-0 overflow-y-auto lg:overflow-hidden">
+              {/* 修正: lg:overflow-hidden を削除し、PCサイズでも高さが足りない場合はスクロールさせる */}
+              <div className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 min-h-0 overflow-y-auto">
                   
                   {/* --- 左カラム: 部屋情報 & プレイヤーリスト --- */}
                   <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full">

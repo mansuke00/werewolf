@@ -44,7 +44,7 @@ export const CountdownScreen = ({ roomCode, matchId }) => {
             <div className="relative z-20 flex flex-col items-center justify-center w-full">
                 <span 
                     key={count} 
-                    className={`text-[30vh] md:text-[45vh] font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500 leading-tight tracking-tighter drop-shadow-[0_0_50px_rgba(255,255,255,0.5)] animate-zoom-in-bounce select-none font-mono py-8 ${count <= 3 ? 'text-red-500' : ''}`}
+                    className={`text-9xl md:text-[15rem] font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500 leading-none tracking-tighter drop-shadow-[0_0_50px_rgba(255,255,255,0.5)] animate-zoom-in-bounce select-none font-mono py-8 ${count <= 3 ? 'text-red-500' : ''}`}
                 >
                     {count}
                 </span>
@@ -64,7 +64,7 @@ export const CountdownScreen = ({ roomCode, matchId }) => {
                         </div>
                 </div>
 
-                <div className="bg-red-600/30 border border-red-500/50 px-8 py-3 rounded-full backdrop-blur-md animate-pulse shadow-[0_0_20px_rgba(220,38,38,0.4)]">
+                <div className="bg-red-600/30 border border-red-500/50 px-8 py-3 rounded-full backdrop-blur-md shadow-[0_0_20px_rgba(220,38,38,0.4)]">
                     <p className="text-sm md:text-base text-white font-bold flex items-center justify-center gap-2 drop-shadow-md">
                         <AlertTriangle size={18} className="shrink-0 text-red-400"/> 
                         <span>他のプレイヤーに見せないでください</span>

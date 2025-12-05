@@ -384,7 +384,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     >
                         MANSUKE<br/>WEREWOLF
                     </h1>
-                    <p className="text-xs md:text-sm text-gray-500 font-mono">Server Edition Ver 3.0 とりあえず公開Ver</p>
+                    <p className="text-xs md:text-sm text-gray-500 font-mono">Server Edition Ver 3.0 Super beta</p>
                 </div>
 
                 <div className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative w-full mx-auto flex flex-col h-auto">
