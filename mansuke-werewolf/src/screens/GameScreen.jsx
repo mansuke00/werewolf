@@ -874,7 +874,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                     <div className="flex border-b border-gray-700">
                                         <button 
                                             onClick={() => setRightPanelTab('chat')}
-                                            className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'chat' ? 'bg-purple-900/30 text-purple-200' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700'}`}
+                                            className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'chat' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-b-2 border-transparent'}`}
                                         >
                                             <MessageSquare size={16}/> {teamChatTitle}
                                             {unreadTeam > 0 && (
@@ -883,9 +883,9 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                         </button>
                                         <button 
                                             onClick={() => setRightPanelTab('gemini')}
-                                            className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'gemini' ? 'bg-indigo-900/30 text-indigo-200' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700'}`}
+                                            className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'gemini' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-b-2 border-transparent'}`}
                                         >
-                                            <Sparkles size={16}/> Gemini Chat
+                                            <Sparkles size={16}/> Gemini AI Chat
                                             {unreadGemini > 0 && (
                                                 <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce">{unreadGemini}</span>
                                             )}

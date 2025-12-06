@@ -12,6 +12,16 @@ export const VotingResultModal = ({ voteSummary, players, anonymousVoting, execu
     // setInterval内での値の整合性を保つため、Stateとは別にRefで数値を管理
     const timerRef = useRef(5);
 
+    // onClose関数の最新状態を保持するRef
+    // 親コンポーネントの再レンダリングでonCloseが再生成されても、
+    // useEffectの依存配列に含めずに済むようにする（タイマーのリセット防止）
+    const onCloseRef = useRef(onClose);
+
+    // onCloseが更新されたらRefも更新
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
     // タイマー処理の副作用
     // マウント時にカウントダウン開始
     useEffect(() => {
@@ -23,13 +33,16 @@ export const VotingResultModal = ({ voteSummary, players, anonymousVoting, execu
             // 0秒になったらクリアして閉じる処理を実行
             if (timerRef.current <= 0) {
                 clearInterval(interval);
-                onClose();
+                // 最新のonClose関数を実行
+                if (onCloseRef.current) {
+                    onCloseRef.current();
+                }
             }
         }, 1000);
 
         // アンマウント時のクリーンアップ
         return () => clearInterval(interval);
-    }, [onClose]);
+    }, []); // 依存配列を空にして、マウント時のみタイマーを設定（親の更新影響を受けない）
 
     // プレイヤー名解決ヘルパー
     // IDから名前を取得。スキップや不明な場合のフォールバック処理含む

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Cpu, Info, ArrowUp } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../config/firebase.js';
-import { ROLE_DEFINITIONS } from '../../constants/gameData.js';
+import { db } from '../../config/firebase'; // .jsを削除
+import { ROLE_DEFINITIONS } from '../../constants/gameData'; // .jsを削除
 
 export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, currentDay, messages, setMessages }) => {
     // 入力中のテキスト
@@ -14,10 +14,6 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
     // 自動スクロール用Ref
     const messagesEndRef = useRef(null);
     
-    // AIからの自動挨拶制御用
-    // 初期値0。夜が変わるごとに判定
-    const lastGreetedDay = useRef(0);
-
     // 最下部へスクロール
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,21 +50,32 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
     }, []);
 
     // 毎晩の自動メッセージ送信処理
-    // 条件: キーあり && 日付更新済み
     useEffect(() => {
-        if (apiKey && currentDay > lastGreetedDay.current) {
-            // 実行済みフラグ更新
-            lastGreetedDay.current = currentDay;
+        // 現在の日付が0日目(開始前)なら何もしない
+        if (currentDay <= 0) return;
+
+        // メッセージ履歴から、今日すでにAIが発言しているか確認
+        // これにより、タブ切り替え時の再発火（二重挨拶）を防ぐ
+        const hasActivityToday = messages.some(m => m.day === currentDay && m.sender === 'ai');
+
+        if (apiKey && !hasActivityToday && !isLoading) {
             // 能動的メッセージ生成 (第2引数true)
-            generateAiResponse(null, true); 
+            generateAiResponse(null, true);
         }
-    }, [apiKey, currentDay]);
+    }, [apiKey, currentDay, messages]); 
 
     // システムプロンプト生成
     // ゲームモード(対面/オンライン)で分岐
     const constructSystemPrompt = () => {
         const { myRole, logs, chatHistory, roleSettings, teammates, lastActionResult, players } = gameContext;
         
+        // 役職説明テキスト生成
+        let roleDescText = "";
+        Object.values(ROLE_DEFINITIONS).forEach(def => {
+            const teamName = def.team === 'werewolf' ? '人狼陣営' : def.team === 'citizen' ? '市民陣営' : '第三陣営';
+            roleDescText += `・${def.name} (${teamName}): ${def.desc}\n`;
+        });
+
         // 対面モード: 雑談相手
         if (inPersonMode) {
             return `
@@ -150,6 +157,20 @@ export const GeminiChatPanel = ({ playerName, inPersonMode, gameContext, current
 ・提供されたログ以外の情報（神視点のログや他人の役職情報など）は一切知らないものとして振る舞い、あくまでプレイヤー目線でアドバイスを行ってください。
 ・会話の中で意図が不明確な場合でも、「よくわかりません」と答えるのではなく、文脈から意図を推測し、その時点で考えられる最善の戦略や振る舞い方を提案してください。
 
+【ロジックの例】
+・人狼の護衛先が罠師/騎士の護衛先なら、襲撃が白紙
+・人狼の襲撃先が罠師の護衛先と一致→人狼が1人死亡
+・人狼の襲撃先が妖狐・残弾ありの長老→襲撃が白紙
+・人狼の襲撃先が人狼キラー → 襲撃は成功するも、人狼も1人死亡する
+・ももすけによる存在意義抹消は、対象が護衛されていても貫通して抹消される
+・ももすけが抹殺能力を使った時に、ももすけが殺されていた場合は、抹消は実行されない
+・占い対象が妖狐 → 結果は「人狼ではない」と表示されるが、翌日朝に護衛など関係なしに死亡する
+・人狼がA(呪われし者)を襲撃、同時にももすけがAを抹消 → Aは死亡
+・騎士と罠師は同じ人を2回連続で護衛することはできない
+
+【役職の説明】
+${roleDescText}
+
 【提供情報】
 プレイヤー名: ${playerName}
 役職: ${myRoleName} (${myTeam})
@@ -186,12 +207,29 @@ ${chatText}
             setMessages(prev => [...prev, { 
                 id: Date.now(), 
                 text: "APIキーが設定されていません。チャットボット機能は現在利用できません。", 
-                sender: 'system' 
+                sender: 'system',
+                day: currentDay // メッセージに日付を付与
             }]);
             return;
         }
 
+        // 重複防止：すでに処理中なら何もしない
+        if (isLoading) return;
+
         setIsLoading(true);
+        const tempId = Date.now() + 1;
+
+        // リクエスト開始時にプレースホルダーメッセージを追加
+        // これにより「今日のアクティビティ」が即座に記録され、タブ切り替え時の重複を防ぐ
+        setMessages(prev => [...prev, { 
+            id: tempId, 
+            text: "...", 
+            sender: 'ai', 
+            isThinking: true,
+            timestamp: new Date(),
+            day: currentDay
+        }]);
+
         try {
             const systemPrompt = constructSystemPrompt();
             let promptContent = systemPrompt + "\n\n【これまでの会話履歴】\n";
@@ -232,17 +270,17 @@ ${chatText}
             const data = await response.json();
             const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "思考がまとまりませんでした。申し訳ありません。";
 
-            // メッセージ追加
-            setMessages(prev => [...prev, { id: Date.now()+1, text: aiText, sender: 'ai', timestamp: new Date() }]);
+            // プレースホルダーを更新して正式なメッセージにする
+            setMessages(prev => prev.map(m => 
+                m.id === tempId ? { ...m, text: aiText, isThinking: false } : m
+            ));
 
         } catch (error) {
             console.error("Gemini Error:", error);
-            setMessages(prev => [...prev, { 
-                id: Date.now()+1, 
-                text: `エラーが発生しました: ${error.message}`, 
-                sender: 'system', 
-                timestamp: new Date() 
-            }]);
+            // エラー時はプレースホルダーをシステムメッセージ扱いに変更するか、エラーを表示
+            setMessages(prev => prev.map(m => 
+                m.id === tempId ? { ...m, text: `エラーが発生しました: ${error.message}`, sender: 'system', isThinking: false } : m
+            ));
         } finally {
             setIsLoading(false);
         }
@@ -261,7 +299,13 @@ ${chatText}
         }
 
         // ユーザーメッセージを即時表示
-        const userMsg = { id: Date.now(), text: input, sender: 'user', timestamp: new Date() };
+        const userMsg = { 
+            id: Date.now(), 
+            text: input, 
+            sender: 'user', 
+            timestamp: new Date(),
+            day: currentDay // メッセージに日付を付与
+        };
         setMessages(prev => [...prev, userMsg]);
         setInput("");
         
@@ -299,8 +343,8 @@ ${chatText}
                     <Info size={14} className="text-indigo-400 mt-0.5 shrink-0"/>
                     <p className="text-[10px] text-indigo-200 leading-relaxed">
                         {inPersonMode 
-                            ? "対面モード中はゲームのアドバイスは行いません。AIとの会話をお楽しみください。"
-                            : "役職チームがそれぞれチャットを行っている可能性があるため、そのカモフラージュとしてAIと会話を行ってください。"
+                            ? "役職持ちのプレイヤーがチームチャットを行っている可能性があるため、カモフラージュとしてAIと会話を行っていてください。"
+                            : "このAIは人狼ゲームのアドバイザーです。最適な指示を提供しますが、間違った情報も含まれている可能性があるため、己の判断を最優先にしましょう。"
                         }
                     </p>
                 </div>
@@ -313,42 +357,48 @@ ${chatText}
                     // 名前表示判定 (連続投稿時は省略)
                     const showName = idx === 0 || messages[idx-1].sender !== msg.sender;
                     
+                    // 日付変更判定
+                    // 前のメッセージと日付が違う、または最初のメッセージの場合に日付ラベルを表示
+                    const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                    const showDateLabel = (!prevMsg || prevMsg.day !== msg.day) && msg.day;
+
                     return (
-                        <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-fade-in`}>
-                            {showName && (
-                                <div className="flex items-baseline gap-2 mb-1 ml-1">
-                                    <span className={`text-[10px] font-bold ${
-                                        msg.sender === 'user' ? 'text-gray-400' : 
-                                        msg.sender === 'system' ? 'text-red-400' : 
-                                        'text-indigo-300'
-                                    }`}>
-                                        {msg.sender === 'user' ? playerName : msg.sender === 'system' ? 'SYSTEM' : 'Gemini'}
+                        <React.Fragment key={msg.id}>
+                            {/* 日付ラベル表示 */}
+                            {showDateLabel && (
+                                <div className="flex justify-center w-full my-4">
+                                    <span className="bg-gray-800/80 text-gray-300 text-[10px] font-bold px-3 py-1 rounded-full border border-gray-700 shadow-sm backdrop-blur-sm">
+                                        {msg.day}日目
                                     </span>
                                 </div>
                             )}
-                            {/* メッセージ本文 */}
-                            <div className={`px-3 py-2 md:px-4 md:py-2.5 rounded-2xl max-w-[85%] break-words text-xs md:text-sm font-medium shadow-md leading-relaxed ${getMsgBubbleStyle(msg.sender)}`}>
-                                {msg.text}
+
+                            <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-fade-in`}>
+                                {showName && (
+                                    <div className="flex items-baseline gap-2 mb-1 ml-1">
+                                        <span className={`text-[10px] font-bold ${
+                                            msg.sender === 'user' ? 'text-gray-400' : 
+                                            msg.sender === 'system' ? 'text-red-400' : 
+                                            'text-indigo-300'
+                                        }`}>
+                                            {msg.sender === 'user' ? playerName : msg.sender === 'system' ? 'SYSTEM' : 'Gemini'}
+                                        </span>
+                                    </div>
+                                )}
+                                {/* メッセージ本文 */}
+                                <div className={`px-3 py-2 md:px-4 md:py-2.5 rounded-2xl max-w-[85%] break-words text-xs md:text-sm font-medium shadow-md leading-relaxed ${getMsgBubbleStyle(msg.sender)}`}>
+                                    {msg.isThinking ? <span className="flex items-center gap-1"><Cpu size={12} className="animate-spin"/> 考え中...</span> : msg.text}
+                                </div>
+                                {/* 時刻表示 */}
+                                {!msg.isThinking && (
+                                    <span className="text-[9px] text-gray-600 mt-1 px-1 opacity-60">
+                                        {msg.timestamp ? msg.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
+                                    </span>
+                                )}
                             </div>
-                            {/* 時刻表示 */}
-                            <span className="text-[9px] text-gray-600 mt-1 px-1 opacity-60">
-                                {msg.timestamp ? msg.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
-                            </span>
-                        </div>
+                        </React.Fragment>
                     );
                 })}
-                
-                {/* 思考中インジケータ */}
-                {isLoading && (
-                    <div className="flex flex-col items-start animate-pulse opacity-70">
-                        <div className="flex items-baseline gap-2 mb-1 ml-1">
-                             <span className="text-[10px] font-bold text-indigo-300">Gemini</span>
-                        </div>
-                        <div className="bg-indigo-900/40 border border-indigo-500/20 px-3 py-2 rounded-2xl rounded-bl-sm text-xs text-indigo-300 flex items-center gap-2">
-                            <Cpu size={12} className="animate-spin"/> 考え中...
-                        </div>
-                    </div>
-                )}
                 {/* 自動スクロール用アンカー */}
                 <div ref={messagesEndRef} />
             </div>

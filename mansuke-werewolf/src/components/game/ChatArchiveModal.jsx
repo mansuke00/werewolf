@@ -6,7 +6,8 @@ import { getMillis } from '../../utils/helpers'; // タイムスタンプ変換�
 // logs: ゲームの進行ログ配列（フェーズ情報含む）
 // messages: チャットメッセージ配列
 // どちらか片方を渡して表示モードを切り替える想定
-export const ChatArchiveModal = ({ messages, onClose, logs, title }) => {
+// user: 現在のユーザー情報（自分のメッセージ判定用に追加）
+export const ChatArchiveModal = ({ messages, onClose, logs, title, user }) => {
     // 表示モード判定
     const isLogMode = !!logs;
     const isChatMode = !!messages;
@@ -94,21 +95,33 @@ export const ChatArchiveModal = ({ messages, onClose, logs, title }) => {
                     ))}
 
                     {/* チャット表示モード */}
-                    {isChatMode && sortedMessages.map((msg, i) => (
-                        <div key={i} className="flex flex-col items-start animate-fade-in">
-                            {/* 送信者名と時刻 */}
-                            <div className="flex items-baseline gap-2 mb-1 px-1">
-                                <span className="text-xs font-bold text-gray-400">{msg.senderName}</span>
-                                <span className="text-[9px] text-gray-600">
-                                    {msg.createdAt ? new Date(getMillis(msg.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
-                                </span>
+                    {isChatMode && sortedMessages.map((msg, i) => {
+                        // 自分のメッセージ判定
+                        const isMe = user?.uid === msg.senderId;
+                        
+                        return (
+                            <div key={i} className={`flex flex-col animate-fade-in ${isMe ? "items-end" : "items-start"}`}>
+                                {/* 送信者名と時刻 */}
+                                {/* 自分の場合は右寄せになるので、時刻と名前の並びも反転させると自然です */}
+                                <div className={`flex items-baseline gap-2 mb-1 px-1 ${isMe ? "flex-row-reverse" : ""}`}>
+                                    <span className="text-xs font-bold text-gray-400">{msg.senderName}</span>
+                                    <span className="text-[9px] text-gray-600">
+                                        {msg.createdAt ? new Date(getMillis(msg.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
+                                    </span>
+                                </div>
+                                {/* メッセージ本文 */}
+                                {/* 自分の場合: 青背景、右上の角を尖らせる (rounded-tr-none) */}
+                                {/* 相手の場合: グレー背景、左上の角を尖らせる (rounded-tl-none) */}
+                                <div className={`px-4 py-2.5 rounded-2xl text-xs md:text-sm border max-w-[95%] break-words shadow-sm ${
+                                    isMe 
+                                    ? "bg-blue-600 text-white rounded-tr-none border-blue-500" 
+                                    : "bg-gray-800 text-gray-200 rounded-tl-none border-gray-700"
+                                }`}>
+                                    {msg.text}
+                                </div>
                             </div>
-                            {/* メッセージ本文 */}
-                            <div className="bg-gray-800 text-gray-200 px-4 py-2.5 rounded-2xl rounded-tl-none text-xs md:text-sm border border-gray-700 max-w-[95%] break-words shadow-sm">
-                                {msg.text}
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                     
                     {/* チャットなしの場合の表示 */}
                     {isChatMode && sortedMessages.length === 0 && (
