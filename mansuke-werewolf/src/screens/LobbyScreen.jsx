@@ -9,8 +9,6 @@ import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { InfoModal } from '../components/ui/InfoModal';
 
 // 設定パネル用タブ定義
-// id: ロジック上の識別子
-// color/border/bg: 選択時のスタイリング用クラス
 const TABS = [
     { id: 'citizen', label: '市民陣営', icon: Shield, color: 'text-blue-400', border: 'border-blue-500/50', bg: 'bg-blue-900/20' },
     { id: 'werewolf', label: '人狼陣営', icon: Moon, color: 'text-red-400', border: 'border-red-500/50', bg: 'bg-red-900/20' },
@@ -19,13 +17,55 @@ const TABS = [
 ];
 
 // コンポーネント: 待機ロビー画面
-// 役割: 参加者一覧表示、ゲーム設定変更、ゲーム開始トリガー
 export const LobbyScreen = ({ user, room, roomCode, players, setNotification, setView, setRoomCode }) => {
+      // 1. フックの宣言を最上部に移動 (条件付きリターンより前に配置)
+      
       // ブラウザ互換性チェックステート
       const [isBrowserSupported, setIsBrowserSupported] = useState(true);
 
+      // ローカル設定ステート
+      // roomがまだnullの場合でもエラーにならないようオプショナルチェーン(?.)を使用
+      const [roleSettings, setRoleSettings] = useState(room?.roleSettings || {});
+      const [anonymousVoting, setAnonymousVoting] = useState(room?.anonymousVoting !== undefined ? room.anonymousVoting : true);
+      const [inPersonMode, setInPersonMode] = useState(room?.inPersonMode !== undefined ? room.inPersonMode : false);
+      const [discussionTime, setDiscussionTime] = useState(room?.discussionTime !== undefined ? room.discussionTime : 240); 
+      const [loading, setLoading] = useState(false);
+      const [activeTab, setActiveTab] = useState('citizen'); 
+      
+      // モーダル制御
+      const [modalConfig, setModalConfig] = useState(null);
+      const [showCodeModal, setShowCodeModal] = useState(false); 
+      const [showDevActionModal, setShowDevActionModal] = useState(false); 
+
+      // Memo: 開発者バッジ表示用フラグ
+      const hasDevPlayer = useMemo(() => players.some(p => p.isDev), [players]);
+
+      // Memo: プレイヤー人数計算（観戦者除外）
+      const validPlayers = useMemo(() => players.filter(p => !p.isSpectator), [players]);
+      const validPlayerCount = validPlayers.length;
+      
+      // 配役合計数計算
+      const totalAssigned = Object.values(roleSettings).reduce((a,b) => a+b, 0);
+
+      // Memo: ゲーム開始条件バリデーション
+      const validationError = useMemo(() => {
+          if (validPlayerCount < 4) return "開始には最低4人のプレイヤーが必要です";
+          if (totalAssigned !== validPlayerCount) return "配役の合計が人数と一致していません";
+          
+          let wolfCount = 0;
+          let humanCount = 0;
+          Object.entries(roleSettings).forEach(([r, c]) => { 
+              if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount += c; 
+              else humanCount += c;
+          });
+          
+          if (wolfCount === 0) return "人狼がいません";
+          if (wolfCount >= humanCount) return "人狼が過半数を占めているため、開始できません";
+          
+          return null;
+      }, [validPlayerCount, totalAssigned, roleSettings]);
+
       // Effect: 推奨ブラウザ判定
-      // Opera等の一部ブラウザを除外し、Chrome/Safari/Edge/Firefoxを許可
       useEffect(() => {
           const checkBrowser = () => {
               const ua = window.navigator.userAgent.toLowerCase();
@@ -48,8 +88,138 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           checkBrowser();
       }, []);
 
+      // Effect: サーバーからの設定更新を同期
+      useEffect(() => {
+          if (room) {
+              setRoleSettings(room.roleSettings || {});
+              setAnonymousVoting(room.anonymousVoting !== undefined ? room.anonymousVoting : true);
+              setInPersonMode(room.inPersonMode !== undefined ? room.inPersonMode : false);
+              setDiscussionTime(room.discussionTime !== undefined ? room.discussionTime : 240);
+          }
+      }, [room]);
+
+      // --------------------------------------------------------------------------------
+      // 2. 変数定義 (フックではないが、レンダリングに必要なもの)
+      // --------------------------------------------------------------------------------
+      
+      const myPlayer = players.find(p => p.id === user?.uid);
+      const isDev = myPlayer?.isDev === true;
+      const isHostUser = room?.hostId === user?.uid; // roomがnullの可能性を考慮
+      const hasControl = isHostUser || isDev;
+
+      // 関数群定義
+      const handleStartGame = async () => { 
+          if(validationError) return setNotification({ message: validationError, type: "error" });
+          setLoading(true); 
+          try { 
+              await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { 
+                  roleSettings, 
+                  anonymousVoting, 
+                  inPersonMode,
+                  discussionTime 
+              }); 
+              const fn = httpsCallable(functions, 'startGame'); 
+              await fn({ roomCode }); 
+          } catch(e){ setNotification({ message: e.message || "開始エラー", type: "error" }); } 
+          finally { setLoading(false); } 
+      };
+
+      const confirmForceClose = () => {
+          setModalConfig({
+              title: "部屋の解散",
+              message: "本当にこの部屋を解散しますか？\n参加中のプレイヤーは全員ホームに戻されます。",
+              isDanger: true,
+              onConfirm: async () => {
+                  setModalConfig(null);
+                  try {
+                      const fn = httpsCallable(functions, 'deleteRoom');
+                      await fn({ roomCode });
+                  } catch (e) {
+                      console.error(e);
+                      await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { status: 'closed' });
+                  }
+              },
+              onCancel: () => setModalConfig(null)
+          });
+      };
+
+      const confirmLeaveRoom = () => {
+          setModalConfig({
+              title: "部屋からの退出",
+              message: "本当に退出しますか？",
+              isDanger: false,
+              onConfirm: async () => {
+                  setModalConfig(null);
+                  try {
+                      await deleteDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', user.uid));
+                      setView('home');
+                      setRoomCode("");
+                      setNotification({ message: "退出しました", type: "success" });
+                  } catch(e) {
+                      setNotification({ message: "退出エラー: " + e.message, type: "error" });
+                  }
+              },
+              onCancel: () => setModalConfig(null)
+          });
+      };
+
+      const confirmKickPlayer = (playerId, playerName, isTargetDev) => {
+          if (isHostUser && isTargetDev) {
+              setNotification({ message: "開発者を追放することはできません", type: "error" });
+              return;
+          }
+
+          setModalConfig({
+              title: "プレイヤーの追放",
+              message: `${playerName} さんを部屋から追放しますか？`,
+              isDanger: true,
+              confirmText: "追放する",
+              onConfirm: async () => {
+                  setModalConfig(null);
+                  try {
+                      const fn = httpsCallable(functions, 'kickPlayer');
+                      await fn({ roomCode, playerId });
+                      setNotification({ message: `${playerName} さんを退出させました`, type: "success" });
+                  } catch(e) {
+                      setNotification({ message: "操作エラー: " + e.message, type: "error" });
+                  }
+              },
+              onCancel: () => setModalConfig(null)
+          });
+      };
+
+      const handleUpdateSettings = (key, val) => {
+          const newSettings = {...roleSettings, [key]: val};
+          setRoleSettings(newSettings);
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { roleSettings: newSettings });
+      };
+      
+      const handleUpdateAnonymous = (val) => {
+          setAnonymousVoting(val);
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { anonymousVoting: val });
+      };
+
+      const handleUpdateInPersonMode = (val) => {
+          setInPersonMode(val);
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { inPersonMode: val });
+      };
+
+      const handleUpdateDiscussionTime = (val) => {
+          setDiscussionTime(val);
+          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { discussionTime: val });
+      };
+
+      const roleGroups = {
+          citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder', 'assassin'],
+          werewolf: ['werewolf', 'greatwolf', 'wise_wolf', 'madman'],
+          third: ['fox', 'teruteru']
+      };
+
+      // --------------------------------------------------------------------------------
+      // 3. 早期リターン (フック宣言後に行うこと！)
+      // --------------------------------------------------------------------------------
+
       // 非推奨ブラウザ時の警告表示
-      // ユーザー体験保護のためオーバーレイでブロック
       if (!isBrowserSupported) {
           return (
               <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col items-center justify-center p-6 text-center text-white overflow-hidden font-sans">
@@ -90,187 +260,6 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
             </div>
         </div>
       );
-      
-      // 権限・ユーザー状態判定
-      const myPlayer = players.find(p => p.id === user?.uid);
-      const isDev = myPlayer?.isDev === true;
-      const isHostUser = room.hostId === user?.uid;
-      const hasControl = isHostUser || isDev; // 設定変更やキック権限を持つか
-
-      // Memo: 開発者バッジ表示用フラグ
-      const hasDevPlayer = useMemo(() => players.some(p => p.isDev), [players]);
-
-      // ローカル設定ステート
-      // 初期値はサーバーデータから、変更時は即時ローカル反映＆サーバー同期
-      const [roleSettings, setRoleSettings] = useState(room.roleSettings || {});
-      const [anonymousVoting, setAnonymousVoting] = useState(room.anonymousVoting !== undefined ? room.anonymousVoting : true);
-      const [inPersonMode, setInPersonMode] = useState(room.inPersonMode !== undefined ? room.inPersonMode : false);
-      const [discussionTime, setDiscussionTime] = useState(room.discussionTime !== undefined ? room.discussionTime : 240); 
-      const [loading, setLoading] = useState(false);
-      const [activeTab, setActiveTab] = useState('citizen'); 
-      
-      // モーダル制御
-      const [modalConfig, setModalConfig] = useState(null);
-      const [showCodeModal, setShowCodeModal] = useState(false); 
-      const [showDevActionModal, setShowDevActionModal] = useState(false); 
-
-      // Effect: サーバーからの設定更新を同期
-      // 他のユーザーが設定を変更した場合の反映
-      useEffect(() => {
-          if (room) {
-              setRoleSettings(room.roleSettings || {});
-              setAnonymousVoting(room.anonymousVoting !== undefined ? room.anonymousVoting : true);
-              setInPersonMode(room.inPersonMode !== undefined ? room.inPersonMode : false);
-              setDiscussionTime(room.discussionTime !== undefined ? room.discussionTime : 240);
-          }
-      }, [room]);
-
-      // Memo: プレイヤー人数計算（観戦者除外）
-      const validPlayers = useMemo(() => players.filter(p => !p.isSpectator), [players]);
-      const validPlayerCount = validPlayers.length;
-      
-      // 配役合計数計算
-      const totalAssigned = Object.values(roleSettings).reduce((a,b) => a+b, 0);
-
-      // Memo: ゲーム開始条件バリデーション
-      // - 最低4人
-      // - 配役数合計と人数の一致
-      // - 人狼の存在確認
-      // - 人狼の過半数チェック（ゲーム即終了条件の回避）
-      const validationError = useMemo(() => {
-          if (validPlayerCount < 4) return "開始には最低4人のプレイヤーが必要です";
-          if (totalAssigned !== validPlayerCount) return "配役の合計が人数と一致していません";
-          
-          let wolfCount = 0;
-          let humanCount = 0;
-          Object.entries(roleSettings).forEach(([r, c]) => { 
-              if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount += c; 
-              else humanCount += c;
-          });
-          
-          if (wolfCount === 0) return "人狼がいません";
-          if (wolfCount >= humanCount) return "人狼が過半数を占めているため、開始できません";
-          
-          return null;
-      }, [validPlayerCount, totalAssigned, roleSettings]);
-
-      // 関数: ゲーム開始処理 (Cloud Functions)
-      // 開始前に最新設定をFirestoreに保存
-      const handleStartGame = async () => { 
-          if(validationError) return setNotification({ message: validationError, type: "error" });
-          setLoading(true); 
-          try { 
-              await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { 
-                  roleSettings, 
-                  anonymousVoting, 
-                  inPersonMode,
-                  discussionTime 
-              }); 
-              const fn = httpsCallable(functions, 'startGame'); 
-              await fn({ roomCode }); 
-          } catch(e){ setNotification({ message: e.message || "開始エラー", type: "error" }); } 
-          finally { setLoading(false); } 
-      };
-
-      // 関数: 部屋解散 (削除)
-      // Cloud Functions 'deleteRoom' を優先利用
-      const confirmForceClose = () => {
-          setModalConfig({
-              title: "部屋の解散",
-              message: "本当にこの部屋を解散しますか？\n参加中のプレイヤーは全員ホームに戻されます。",
-              isDanger: true,
-              onConfirm: async () => {
-                  setModalConfig(null);
-                  try {
-                      const fn = httpsCallable(functions, 'deleteRoom');
-                      await fn({ roomCode });
-                  } catch (e) {
-                      console.error(e);
-                      // fallback: ステータス変更のみ
-                      await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { status: 'closed' });
-                  }
-              },
-              onCancel: () => setModalConfig(null)
-          });
-      };
-
-      // 関数: 退出処理 (プレイヤー削除)
-      const confirmLeaveRoom = () => {
-          setModalConfig({
-              title: "部屋からの退出",
-              message: "本当に退出しますか？",
-              isDanger: false,
-              onConfirm: async () => {
-                  setModalConfig(null);
-                  try {
-                      await deleteDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', user.uid));
-                      setView('home');
-                      setRoomCode("");
-                      setNotification({ message: "退出しました", type: "success" });
-                  } catch(e) {
-                      setNotification({ message: "退出エラー: " + e.message, type: "error" });
-                  }
-              },
-              onCancel: () => setModalConfig(null)
-          });
-      };
-
-      // 関数: プレイヤー追放 (Cloud Functions)
-      // ホストによる開発者追放は不可
-      const confirmKickPlayer = (playerId, playerName, isTargetDev) => {
-          if (isHostUser && isTargetDev) {
-              setNotification({ message: "開発者を追放することはできません", type: "error" });
-              return;
-          }
-
-          setModalConfig({
-              title: "プレイヤーの追放",
-              message: `${playerName} さんを部屋から追放しますか？`,
-              isDanger: true,
-              confirmText: "追放する",
-              onConfirm: async () => {
-                  setModalConfig(null);
-                  try {
-                      const fn = httpsCallable(functions, 'kickPlayer');
-                      await fn({ roomCode, playerId });
-                      setNotification({ message: `${playerName} さんを退出させました`, type: "success" });
-                  } catch(e) {
-                      setNotification({ message: "操作エラー: " + e.message, type: "error" });
-                  }
-              },
-              onCancel: () => setModalConfig(null)
-          });
-      };
-
-      // 関数群: 設定変更ハンドラ
-      // ステート更新とFirestore更新を並行実行
-      const handleUpdateSettings = (key, val) => {
-          const newSettings = {...roleSettings, [key]: val};
-          setRoleSettings(newSettings);
-          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { roleSettings: newSettings });
-      };
-      
-      const handleUpdateAnonymous = (val) => {
-          setAnonymousVoting(val);
-          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { anonymousVoting: val });
-      };
-
-      const handleUpdateInPersonMode = (val) => {
-          setInPersonMode(val);
-          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { inPersonMode: val });
-      };
-
-      const handleUpdateDiscussionTime = (val) => {
-          setDiscussionTime(val);
-          if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { discussionTime: val });
-      };
-
-      // 定数: 役職グループ定義 (タブ表示用)
-      const roleGroups = {
-          citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder', 'assassin'],
-          werewolf: ['werewolf', 'greatwolf', 'wise_wolf', 'madman'],
-          third: ['fox', 'teruteru']
-      };
 
       // ローディング画面
       if (loading) return (
@@ -282,6 +271,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
         </div>
       );
 
+      // --------------------------------------------------------------------------------
+      // 4. メインレンダリング
+      // --------------------------------------------------------------------------------
       return (
           // レイアウト: 2カラム (左:情報 / 右:設定)
           // SP対応: 横スクロール抑制 overflow-x-hidden
@@ -397,10 +389,10 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                               </div>
                               <div className="pl-11">
                                   <p className="text-xs text-indigo-200 leading-relaxed mb-2">
-                                      開発者バッジがついているプレイヤーは、MANSUKE WEREWOLFの開発に従事しました。
+                                      開発者バッジがついているプレイヤーは、MANSUKE WEREWOLFの開発者または協力者です。
                                   </p>
                                   <ul className="list-disc list-outside text-[10px] md:text-xs text-indigo-300/80 space-y-1 ml-4">
-                                      <li>開発者も参加者の1人として、ゲームを通常通りプレイします。</li>
+                                      <li>開発者も参加者の1人として、通常通りプレイします。</li>
                                       <li>ホストは、開発者を追放することはできません。</li>
                                   </ul>
                               </div>

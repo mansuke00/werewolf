@@ -112,7 +112,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
 
     // 権限フラグ
     const isDev = myPlayer?.isDev === true;
-    const isHost = room.hostId === user.uid;
+    // 修正: roomやuserがロード中でもエラーにならないようオプショナルチェーンを使用
+    const isHost = room?.hostId === user?.uid;
     const hasControl = isHost || isDev; // 強制終了やキック権限
 
     // 関数: トースト通知表示ラッパー
