@@ -8,6 +8,48 @@ const db = admin.firestore();
 const { ROLE_NAMES } = require('./constants');
 const { checkWin, electLeaders, getTeamMemberIds } = require('./utils');
 
+// ★追加: ゲームデータのアーカイブ処理
+const archiveGame = async (t, roomRef, roomData, players, endStatus, winner = null) => {
+    // 必須データのチェック
+    if (!roomData.matchId) return;
+
+    // 保存先を match_history コレクションに変更
+    const historyRef = db.collection('artifacts').doc('mansuke-jinro').collection('public').doc('data').collection('match_history').doc(roomData.matchId);
+    
+    // アーカイブするデータを作成
+    const archiveData = {
+        matchId: roomData.matchId,
+        roomCode: roomRef.id,
+        hostId: roomData.hostId,
+        hostName: roomData.hostName,
+        status: endStatus,
+        winner: winner || roomData.winner || null,
+        teruteruWon: roomData.teruteruWon || false,
+        roleSettings: roomData.roleSettings || {},
+        logs: roomData.logs || [],
+        // プレイヤー情報（役職含む）を保存
+        players: players.map(p => ({
+            id: p.id,
+            name: p.name,
+            role: p.role || 'unknown',
+            originalRole: p.originalRole || p.role || 'unknown',
+            status: p.status,
+            deathReason: p.deathReason || null,
+            diedDay: p.diedDay || null,
+            isSpectator: p.isSpectator || false,
+            isDev: p.isDev || false
+        })),
+        // チャットログは容量が大きくなる可能性があるため今回は割愛し、主要なログのみとする
+        // 必要であればここに chatMessages を追加することも可能
+        chatMessages: [], 
+        createdAt: roomData.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+        startedAt: roomData.phaseStartTime || null,
+        endedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    t.set(historyRef, archiveData);
+};
+
 // フェーズ変更を適用する（昼→夜、夜→朝など）
 const applyPhaseChange = async (t, roomRef, room, players) => {
     let next = "", logs = [], updates = {}, batchOps = [];
@@ -151,6 +193,8 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
           updates.status = 'finished'; 
           updates.winner = winner; 
           next = null; 
+          // ★追加: 正常終了時にアーカイブ
+          await archiveGame(t, roomRef, {...room, ...updates}, players, 'finished', winner);
       } else {
         next = `night_${room.day}`;
         const leaders = electLeaders(players.filter(p => !deadIds.includes(p.id)));
@@ -319,7 +363,13 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
 
       const allDead = [...players.filter(p=>p.status==='dead'||p.status==='vanished').map(p=>p.id), ...uniqDead];
       const winner = checkWin(checkPlayers, allDead);
-      if (winner) { updates.status = 'finished'; updates.winner = winner; next = null; }
+      if (winner) { 
+          updates.status = 'finished'; 
+          updates.winner = winner; 
+          next = null; 
+          // ★追加: 終了時にアーカイブ
+          await archiveGame(t, roomRef, {...room, ...updates}, checkPlayers, 'finished', winner);
+      }
       else next = `announcement_${room.day+1}`;
     } else if (room.phase.startsWith('announcement')) {
         next = `day_${room.day}`;
@@ -371,5 +421,6 @@ const checkNightCompletion = async (t, roomRef, room, players) => {
 
 module.exports = {
   applyPhaseChange,
-  checkNightCompletion
+  checkNightCompletion,
+  archiveGame // エクスポート
 };

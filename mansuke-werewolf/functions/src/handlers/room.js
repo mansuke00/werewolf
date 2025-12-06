@@ -5,7 +5,7 @@ const admin = require("firebase-admin");
 const db = admin.firestore();
 
 const { checkWin } = require('../utils');
-const { checkNightCompletion, applyPhaseChange } = require('../core');
+const { checkNightCompletion, applyPhaseChange, archiveGame } = require('../core'); // archiveGameを追加
 
 // 観戦者として参加
 exports.joinSpectatorHandler = async (request) => {
@@ -82,14 +82,29 @@ exports.abortGameHandler = async (request) => {
         if (!rSnap.exists) throw new HttpsError('not-found', '部屋が見つかりません');
         const room = rSnap.data();
         
-        t.update(roomRef, {
+        // プレイヤー情報の取得（アーカイブ用）
+        const pSnap = await t.get(roomRef.collection('players'));
+        const secretRefs = pSnap.docs.map(d => d.ref.collection('secret').doc('roleData'));
+        const secretSnaps = await Promise.all(secretRefs.map(ref => t.get(ref)));
+        const players = pSnap.docs.map((d, i) => {
+            const p = { id: d.id, ...d.data() };
+            if(secretSnaps[i].exists) p.role = secretSnaps[i].data().role;
+            return p;
+        });
+
+        const updates = {
             status: 'aborted',
             logs: admin.firestore.FieldValue.arrayUnion({
                 text: "ホストがゲームを強制終了しました。",
                 phase: "System",
                 day: room.day || 1
             })
-        });
+        };
+        
+        t.update(roomRef, updates);
+
+        // ★追加: 強制終了時にもアーカイブを作成
+        await archiveGame(t, roomRef, {...room, ...updates}, players, 'aborted');
     });
     return { success: true };
 };
@@ -181,6 +196,8 @@ exports.kickPlayerHandler = async (request) => {
         
         if (winner) {
             t.update(roomRef, { status: 'finished', winner: winner });
+            // ★追加: 追放によって決着した場合もアーカイブ
+            await archiveGame(t, roomRef, {...room, status: 'finished', winner}, playersData, 'finished', winner);
         } else if (room.phase && room.phase.startsWith('night')) {
             await checkNightCompletion(t, roomRef, room, playersData);
         } else if (room.phase && room.phase.startsWith('day')) {

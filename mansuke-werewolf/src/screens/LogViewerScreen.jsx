@@ -51,7 +51,7 @@ export const LogViewerScreen = ({ setView }) => {
             if (matchIdInput.trim()) {
                 await searchByMatchId(matchIdInput.trim());
             } else {
-                // 条件なしの場合は直近のデータを取得（負荷対策のため50件制限）
+                // 条件なしの場合は直近のデータを取得
                 const targetDate = initialDate || searchDate;
                 const hasNameSearch = !!searchName.trim();
                 const hasDateSearch = !!targetDate;
@@ -60,17 +60,19 @@ export const LogViewerScreen = ({ setView }) => {
                 const validStatuses = ['finished', 'closed', 'aborted'];
 
                 if (!hasNameSearch && !hasDateSearch) {
+                    // ★修正: where('status', 'in', ...) を削除し、orderByのみで取得してからクライアントサイドでフィルタリングする
+                    // これによりインデックス未作成や複合クエリの制限によるエラーを回避し、確実にデータを取得する
                     const recentQuery = query(
                         collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'),
-                        where('status', 'in', validStatuses),
                         orderBy('createdAt', 'desc'),
-                        limit(50)
+                        limit(100) // フィルタリング前なので少し多めに取得
                     );
                     const snapshot = await getDocs(recentQuery);
-                    // さらに念のためmatchIdがあるものだけにフィルタリング
+                    
+                    // ステータスとmatchIdでフィルタリング
                     const results = snapshot.docs
                         .map(d => ({ id: d.id, ...d.data() }))
-                        .filter(d => d.matchId);
+                        .filter(d => d.matchId && validStatuses.includes(d.status));
                     
                     if (results.length === 0) setError("データが見つかりませんでした。");
                     else setMatchList(results);
@@ -110,9 +112,9 @@ export const LogViewerScreen = ({ setView }) => {
                         end.setDate(end.getDate() + 1);
                     }
 
+                    // ★修正: 日時検索時もstatusのwhere句を外し、クライアントフィルタにする
                     const dateQuery = query(
                         collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms'), 
-                        where('status', 'in', validStatuses),
                         where('createdAt', '>=', Timestamp.fromDate(start)),
                         where('createdAt', '<', Timestamp.fromDate(end)),
                         orderBy('createdAt', 'desc')
@@ -121,7 +123,7 @@ export const LogViewerScreen = ({ setView }) => {
                     promises.push(getDocs(dateQuery).then(snapshot => 
                         snapshot.docs
                             .map(d => ({ id: d.id, ...d.data() }))
-                            .filter(d => d.matchId)
+                            .filter(d => d.matchId && validStatuses.includes(d.status))
                     ));
                 } else {
                     promises.push(Promise.resolve(null));
@@ -534,7 +536,8 @@ export const LogViewerScreen = ({ setView }) => {
                                     <span className="text-gray-500 text-[10px] font-bold tracking-[0.2em] uppercase">MATCH ID</span>
                                     <span className="text-gray-500 text-[10px] font-mono tracking-wider">{new Date(getMillis(searchResult.room.createdAt)).toLocaleString()}</span>
                                 </div>
-                                <div className="text-5xl md:text-7xl font-black text-white tracking-widest mb-8 md:mb-10 text-center drop-shadow-2xl break-all">
+                                {/* ★修正: MATCH IDのフォントサイズを小さくし、1行に収まるようにする */}
+                                <div className="text-3xl md:text-5xl font-black text-white tracking-widest mb-8 md:mb-10 text-center drop-shadow-2xl whitespace-nowrap overflow-hidden text-ellipsis w-full">
                                     {searchResult.room.matchId}
                                 </div>
                                 {getStatusDisplay(searchResult.room)}

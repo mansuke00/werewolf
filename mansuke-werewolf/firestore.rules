@@ -41,11 +41,14 @@ match /artifacts/mansuke-jinro/public/data/rooms/{roomId} {
                 && request.resource.data.hostId == request.auth.uid
                 && request.resource.data.status == 'waiting'; // 最初は必ず待機状態
   
-  // 更新: ホストだけが、待機中(Lobby)のみ設定変更可能
+  // 更新: ホスト、またはその部屋の開発者(isDev=true)が、待機中(Lobby)のみ設定変更可能
   // ※ホスト移行はサーバー関数(migrateHost)で行うため、クライアントからの更新は設定変更のみ想定
   allow update: if isAuth() 
-                && resource.data.hostId == request.auth.uid
-                && resource.data.status == 'waiting';
+                && resource.data.status == 'waiting'
+                && (
+                  resource.data.hostId == request.auth.uid ||
+                  get(/databases/$(database)/documents/artifacts/mansuke-jinro/public/data/rooms/$(roomId)/players/$(request.auth.uid)).data.isDev == true
+                );
 
   // 削除: 誰もできない（サーバー側の定期クリーンアップに任せる）
   allow delete: if false;

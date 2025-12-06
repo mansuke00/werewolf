@@ -11,7 +11,7 @@ import { LogViewerScreen } from './screens/LogViewerScreen.jsx';
 import { Notification } from './components/ui/Notification.jsx';
 import { db, auth } from './config/firebase.js';
 import { HEARTBEAT_INTERVAL_MS } from './constants/gameData.js';
-import { Loader, AlertTriangle, LogIn, XCircle, Home, MonitorX } from 'lucide-react';
+import { Loader, AlertTriangle, LogIn, XCircle, Home, MonitorX, ExternalLink, Copy, Check } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -30,6 +30,10 @@ export default function App() {
 
   // 画面サイズ・向きの監視
   const [isMobileView, setIsMobileView] = useState(false);
+  // アプリ内ブラウザの監視
+  const [isInAppBrowser, setIsInAppBrowser] = useState(false);
+  // URLコピー済みフラグ
+  const [isUrlCopied, setIsUrlCopied] = useState(false);
 
   useEffect(() => {
     const checkScreen = () => {
@@ -39,7 +43,40 @@ export default function App() {
       setIsMobileView(isSmall || isPortrait);
     };
 
+    // アプリ内ブラウザ検知（強化版）
+    const checkInAppBrowser = () => {
+        const ua = window.navigator.userAgent.toLowerCase();
+        
+        // 検知したいキーワードリスト（全て小文字で記述）
+        const inAppKeywords = [
+            'slack',      // Slack
+            'line',       // LINE
+            'instagram',  // Instagram
+            'fban',       // Facebook (Android)
+            'fbav',       // Facebook (iOS)
+            'fb_iab',     // Facebook (In-App Browser)
+            'twitter',    // Twitter
+            'micromessenger', // WeChat
+            'tiktok',     // TikTok
+            'pinterest',  // Pinterest
+            'snapchat',   // Snapchat
+            'yjapp',      // Yahoo! JAPAN アプリ
+            'yjm',        // Yahoo! JAPAN モバイル
+            'googlesearchapp', // Google検索アプリ
+            'wv'          // Android WebView (一般的な識別子)
+        ];
+
+        // キーワード判定
+        const isBlacklisted = inAppKeywords.some(keyword => ua.includes(keyword));
+        
+        setIsInAppBrowser(isBlacklisted);
+        
+        // デバッグ用: もし開発者コンソールが見れる場合はUAを確認できます
+        // console.log("User Agent:", ua, "Is In-App:", isBlacklisted);
+    };
+
     checkScreen();
+    checkInAppBrowser();
     window.addEventListener('resize', checkScreen);
     return () => window.removeEventListener('resize', checkScreen);
   }, []);
@@ -215,7 +252,51 @@ export default function App() {
       setShowRestoreModal(false);
   };
 
-  // 画面サイズ警告（最優先表示）
+  const handleCopyUrl = () => {
+      const url = window.location.href;
+      navigator.clipboard.writeText(url).then(() => {
+          setIsUrlCopied(true);
+          setTimeout(() => setIsUrlCopied(false), 2000);
+      });
+  };
+
+  // アプリ内ブラウザ警告（最優先表示）
+  if (isInAppBrowser) {
+      return (
+          <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col items-center justify-center p-6 text-center text-white overflow-hidden font-sans">
+              <div className="max-w-md w-full flex flex-col items-center gap-6 animate-fade-in-up">
+                  <div className="p-6 bg-yellow-900/20 rounded-full border border-yellow-500/30 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+                      <ExternalLink size={64} className="text-yellow-500" />
+                  </div>
+                  <h1 className="text-xl md:text-2xl font-black leading-tight">
+                      MANSUKE WEREWOLFは<br/>アプリ内ブラウザでは<br/>ご利用いただけません
+                  </h1>
+                  <div className="bg-gray-900/80 border border-gray-700 p-6 rounded-2xl text-sm text-gray-300 leading-relaxed text-left shadow-xl">
+                      Slackなどで直接リンクを開いた可能性があります。<br/>
+                      Safariなどのブラウザアプリから直接開いてください。
+                  </div>
+                  
+                  <div className="w-full space-y-3">
+                      <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">PAGE URL</p>
+                      <button 
+                          onClick={handleCopyUrl}
+                          className="w-full bg-gray-800 border border-gray-600 hover:bg-gray-700 hover:border-gray-500 text-white rounded-xl py-4 px-4 flex items-center justify-between transition group relative overflow-hidden"
+                      >
+                          <span className="font-mono text-sm truncate mr-4 text-gray-300 group-hover:text-white transition">
+                              {window.location.href}
+                          </span>
+                          <div className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${isUrlCopied ? "bg-green-500/20 text-green-400" : "bg-black/30 text-gray-400 group-hover:text-white"}`}>
+                              {isUrlCopied ? <Check size={14} /> : <Copy size={14} />}
+                              {isUrlCopied ? "COPIED" : "COPY"}
+                          </div>
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
+  // 画面サイズ警告（アプリ内ブラウザでない場合のみ表示）
   if (isMobileView) {
       return (
           <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col items-center justify-center p-6 text-center text-white overflow-hidden">

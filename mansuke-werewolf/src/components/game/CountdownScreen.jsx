@@ -44,7 +44,8 @@ export const CountdownScreen = ({ roomCode, matchId }) => {
             <div className="relative z-20 flex flex-col items-center justify-center w-full">
                 <span 
                     key={count} 
-                    className={`text-9xl md:text-[15rem] font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500 leading-none tracking-tighter drop-shadow-[0_0_50px_rgba(255,255,255,0.5)] animate-zoom-in-bounce select-none font-mono py-8 ${count <= 3 ? 'text-red-500' : ''}`}
+                    // ★修正: フォントサイズを小さくして画面からはみ出さないように調整
+                    className={`text-9xl md:text-[10rem] lg:text-[12rem] font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500 leading-none tracking-tighter drop-shadow-[0_0_50px_rgba(255,255,255,0.5)] animate-zoom-in-bounce select-none font-mono py-8 ${count <= 3 ? 'text-red-500' : ''}`}
                 >
                     {count}
                 </span>

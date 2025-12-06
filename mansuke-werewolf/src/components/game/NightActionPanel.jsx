@@ -35,7 +35,8 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         return (
             <div className="flex flex-col h-full p-4 animate-fade-in items-center justify-center text-center bg-gray-900/80 rounded-xl ring-4 ring-purple-400/50">
                 <div className="flex flex-col items-center mb-4 gap-2">
-                     <Search size={48} className="text-purple-400 animate-bounce-slow"/>
+                     {/* ★修正: アニメーション(animate-bounce-slow)を削除 */}
+                     <Search size={48} className="text-purple-400"/>
                      <h3 className="text-xl font-bold text-white">以下の情報をご確認ください</h3>
                 </div>
                 <div className="space-y-3 w-full max-w-sm">
@@ -235,7 +236,8 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         
         return (
             <div className="flex flex-col h-full p-4 animate-fade-in items-center justify-center text-center bg-gray-900/80 rounded-xl ring-4 ring-yellow-400/50">
-                <div className="bg-white/10 p-4 rounded-full mb-4 animate-bounce-slow">
+                {/* ★修正: アニメーション(animate-bounce-slow)を削除 */}
+                <div className="bg-white/10 p-4 rounded-full mb-4">
                      {React.createElement(doneIcon, { size: 48, className: "text-yellow-400" })}
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">今夜のアクションは終了しました</h3>
