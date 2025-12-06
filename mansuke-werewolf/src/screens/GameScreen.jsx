@@ -4,7 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
 import { ROLE_DEFINITIONS, TIME_LIMITS } from '../constants/gameData.js';
 import { getMillis, formatPhaseName } from '../utils/helpers.js';
-import { Loader, History, Mic, Gavel, CheckCircle, Sun, Moon, Clock, Settings, Users, ThumbsUp, Eye, LogOut, Skull, UserMinus } from 'lucide-react';
+import { Loader, History, Mic, Gavel, CheckCircle, Sun, Moon, Clock, Settings, Users, ThumbsUp, Eye, LogOut, Skull, UserMinus, MessageSquare, Sparkles } from 'lucide-react';
 
 import { MiniRoleCard } from '../components/game/RoleCard.jsx';
 import { ChatPanel } from '../components/game/ChatPanel.jsx';
@@ -25,95 +25,119 @@ import { InfoModal } from '../components/ui/InfoModal.jsx';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal.jsx';
 import { ResultScreen } from './ResultScreen.jsx';
 
+// コンポーネント: ゲーム画面メイン
+// 役割: ゲーム進行の制御、各フェーズのUI表示、リアルタイム通信の管理
 export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, setRoomCode, maintenanceMode, setNotification }) => {
-    // 状態管理
+    // ステート: プレイヤー自身の情報
+    // myRole/originalRole: Firestoreのsecretサブコレクションから取得
+    // mySecret: 役職データ全体（仲間の情報など含む）
     const [myRole, setMyRole] = useState(null);
     const [originalRole, setOriginalRole] = useState(null);
     const [teammates, setTeammates] = useState([]);
-    const [mySecret, setMySecret] = useState(null); // mySecretも保持するように追加
+    const [mySecret, setMySecret] = useState(null); 
     
-    // チャット・ログ関連
+    // ステート: チャット・ログデータ
+    // Firestoreのリスナー経由でリアルタイム更新
     const [messages, setMessages] = useState([]);
     const [teamMessages, setTeamMessages] = useState([]);
     const [graveMessages, setGraveMessages] = useState([]);
     const [logs, setLogs] = useState([]);
     
-    // Geminiチャットの状態をここで管理（コンポーネントがアンマウントされても維持するため）
+    // ステート: AIチャット履歴
+    // コンポーネント切り替え時も履歴を保持するためここで管理
     const [geminiMessages, setGeminiMessages] = useState([]);
     
-    // 進行制御
+    // ステート: 進行管理・アクション制御
     const [timeLeft, setTimeLeft] = useState(0);
     const [nightActionDone, setNightActionDone] = useState(false);
     const [voteSelection, setVoteSelection] = useState(null);
     const [hasVoted, setHasVoted] = useState(false);
-    const [isVotingSubmitting, setIsVotingSubmitting] = useState(false); // 投票処理中の状態
+    const [isVotingSubmitting, setIsVotingSubmitting] = useState(false); // 二重送信防止用フラグ
     
-    // UI表示
-    const [notificationLocal, setNotificationLocal] = useState(null); // ローカル通知用
-    const [overlay, setOverlay] = useState(null);
-    const [lastActionResult, setLastActionResult] = useState(null); 
+    // ステート: UI表示制御
+    const [notificationLocal, setNotificationLocal] = useState(null); // この画面内限定のトースト通知
+    const [overlay, setOverlay] = useState(null); // 全画面オーバーレイ（フェーズ遷移演出等）
+    const [lastActionResult, setLastActionResult] = useState(null); // 夜のアクション結果（占い結果等）
+    const [rightPanelTab, setRightPanelTab] = useState('chat'); // 右パネルのタブ切り替え ('chat' | 'gemini')
     
-    // モーダル
-    const [deadPlayersInfo, setDeadPlayersInfo] = useState([]);
-    const [showRoleDist, setShowRoleDist] = useState(false);
-    const [showSurvivors, setShowSurvivors] = useState(false);
-    const [showArchive, setShowArchive] = useState(false);
-    const [selectedArchive, setSelectedArchive] = useState(null);
-    const [showVoteResult, setShowVoteResult] = useState(false);
-    const [showKickModal, setShowKickModal] = useState(false);
-    const [modalConfig, setModalConfig] = useState(null);
+    // ステート: 未読バッジ管理
+    // チャット更新時に前回の件数と比較して増加分をカウント
+    const [unreadTeam, setUnreadTeam] = useState(0);
+    const [unreadGemini, setUnreadGemini] = useState(0);
+    const lastTeamMsgCountRef = useRef(0);
+    const lastGeminiMsgCountRef = useRef(0);
     
+    // ステート: 各種モーダル表示フラグ
+    const [deadPlayersInfo, setDeadPlayersInfo] = useState([]); // 霊界用: 全プレイヤーの正体
+    const [showRoleDist, setShowRoleDist] = useState(false); // 役職配分
+    const [showSurvivors, setShowSurvivors] = useState(false); // 生存者リスト
+    const [showArchive, setShowArchive] = useState(false); // 過去ログアーカイブ
+    const [selectedArchive, setSelectedArchive] = useState(null); // 表示するアーカイブデータ
+    const [showVoteResult, setShowVoteResult] = useState(false); // 投票結果
+    const [showKickModal, setShowKickModal] = useState(false); // キック機能
+    const [modalConfig, setModalConfig] = useState(null); // 汎用確認モーダル設定
+    
+    // ステート: フェーズ遷移制御
+    // hasShownWaitMessage: 「待機中」メッセージの重複表示防止
+    // optimisticPhase: サーバー更新待ちの間の楽観的フェーズ表示
+    // isReadyProcessing: 準備完了ボタンの連打防止
     const [hasShownWaitMessage, setHasShownWaitMessage] = useState(false);
     const [optimisticPhase, setOptimisticPhase] = useState(null); 
     const [isReadyProcessing, setIsReadyProcessing] = useState(false);
 
-    const processingRef = useRef(false);
-    const lastPhaseRef = useRef(null);
-    const lastNotificationRef = useRef(null);
+    // Ref: 副作用内での値参照・重複実行防止
+    const processingRef = useRef(false); // フェーズ進行処理の重複防止
+    const lastPhaseRef = useRef(null); // 前回のフェーズ（変化検知用）
+    const lastNotificationRef = useRef(null); // 同じ通知の繰り返し防止
     
-    // roomオブジェクトから必要なプロパティを抽出
+    // データ抽出: roomオブジェクトからのプロパティ展開
     const roomPhase = room?.phase;
     const roomDay = room?.day;
     const roomStatus = room?.status;
     const roomPhaseStartTime = room?.phaseStartTime;
-    const roomNightAllDoneTime = room?.nightAllDoneTime;
+    const roomNightAllDoneTime = room?.nightAllDoneTime; // 夜アクション全員完了時刻
     const roomHostId = room?.hostId;
     
     const discussionTime = room?.discussionTime || TIME_LIMITS.DISCUSSION;
-    const inPersonMode = room?.inPersonMode || false;
+    const inPersonMode = room?.inPersonMode || false; // 対面モードフラグ
     
     const baseDay = (typeof roomDay === 'number') ? roomDay : 1;
     const isGameEnded = roomStatus === 'finished' || roomStatus === 'aborted' || roomStatus === 'closed';
     
+    // 表示用フェーズ決定（楽観的更新を優先）
     const displayPhase = optimisticPhase || roomPhase || "loading";
     const displayDay = baseDay; 
     const isDead = myPlayer?.status === 'dead' || myPlayer?.status === 'vanished' || myPlayer?.isSpectator;
     const isSpectator = myPlayer?.isSpectator;
 
-    // 開発者フラグ
+    // 権限フラグ
     const isDev = myPlayer?.isDev === true;
     const isHost = room.hostId === user.uid;
-    const hasControl = isHost || isDev;
+    const hasControl = isHost || isDev; // 強制終了やキック権限
 
-    // 通知表示関数（空メッセージは無視、デフォルト3秒）
+    // 関数: トースト通知表示ラッパー
     const showNotify = (msg, type = "info", duration = 3000) => {
         if (!msg) return;
         setNotificationLocal({ message: msg, type, duration });
     };
 
-    // 表示用プレイヤー情報の生成
+    // Memo: 表示用プレイヤーリスト生成
+    // 自分が死亡している場合、サーバーから取得した正体情報(deadPlayersInfo)をマージして表示
     const displayPlayers = useMemo(() => {
         if (!players) return [];
         if (isDead && deadPlayersInfo.length > 0) {
             return players.map(p => {
                 const secret = deadPlayersInfo.find(d => d.id === p.id);
+                // 正体情報があれば上書き
                 return secret ? { ...p, role: secret.role, originalRole: secret.originalRole } : p;
             });
         }
         return players;
     }, [players, isDead, deadPlayersInfo]);
 
-    // Gemini用ログフィルタリング
+    // Memo: AI向けログフィルタリング
+    // secretフラグ付きログの場合、visibleToに含まれていなければ除外
+    // 公平性のためAIには見えてはいけない情報を渡さない
     const visibleLogsForAi = useMemo(() => {
         if (!logs) return [];
         return logs.filter(l => {
@@ -123,12 +147,13 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         });
     }, [logs, user?.uid]);
 
-    // 通知イベント監視
+    // Effect: 通知イベント監視
+    // サーバー側で書き込まれたnotificationEventを検知してトースト表示
     useEffect(() => {
         if (room?.notificationEvent) {
             const evt = room.notificationEvent;
+            // タイムスタンプとメッセージでユニーク判定し、重複表示を防ぐ
             const key = `${evt.timestamp?.seconds}_${evt.message}`;
-            // メッセージが存在する場合のみ通知
             if (evt.message && lastNotificationRef.current !== key) {
                 showNotify(evt.message, "info", 4000);
                 lastNotificationRef.current = key;
@@ -136,20 +161,28 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         }
     }, [room?.notificationEvent]);
 
-    // Firestore監視
+    // Effect: Firestoreリアルタイム監視 (メイン)
+    // - 全体チャット
+    // - 霊界チャット
+    // - 自分の秘密情報 (roleData, actionResult)
     useEffect(() => {
         if (!roomCode || !user || isGameEnded) return;
+        
+        // チャット監視
         const unsubChat = onSnapshot(query(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'chat'), orderBy('createdAt', 'asc')), (snap) => { setMessages(snap.docs.map(d=>d.data())); });
+        // 霊界チャット監視
         const unsubGrave = onSnapshot(query(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'graveChat'), orderBy('createdAt', 'asc')), (snap) => setGraveMessages(snap.docs.map(d => d.data())));
         
         let ur = () => {};
         let ures = () => {};
 
+        // 観戦者以外は自分の秘密情報を監視
         if (!isSpectator) {
+            // 役職情報監視: players/{uid}/secret/roleData
             ur = onSnapshot(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', user.uid, 'secret', 'roleData'), s=>{ 
                 if(s.exists()){ 
                     const d = s.data();
-                    setMySecret(d); // mySecretも更新
+                    setMySecret(d); 
                     setMyRole(d.role); 
                     setOriginalRole(d.originalRole);
                     const rawTeammates = d.teammates || [];
@@ -158,9 +191,12 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 }
             });
 
+            // アクション結果監視: players/{uid}/secret/actionResult
+            // 日付が一致する場合のみ反映
             ures = onSnapshot(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players', user.uid, 'secret', 'actionResult'), s=>{ 
                 if(s.exists() && s.data().day === baseDay){ 
                     setLastActionResult(s.data().cards);
+                    // 夜フェーズ中に結果が来たら通知
                     if (roomPhase?.startsWith('night')) {
                         showNotify("アクションの結果が届きました", "success"); 
                     }
@@ -171,6 +207,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         return () => { unsubChat(); unsubGrave(); ur(); ures(); };
     }, [roomCode, user, baseDay, roomPhase, isGameEnded, isSpectator]);
 
+    // Effect: 死亡時の全プレイヤー役職取得
+    // 死亡時はCloud Functions経由で全員の役職情報を取得可能
     useEffect(() => {
         if (isDead && !isGameEnded) {
             const fetchAllRoles = async () => {
@@ -186,19 +224,20 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         }
     }, [isDead, roomCode, isGameEnded]);
 
-    // 役職チャットの設定
+    // Effect: 役職（チーム）チャット監視設定
+    // 自分の役職に応じて適切なチャンネルを購読
     useEffect(() => {
          if (!user || !roomCode || isGameEnded) return; 
          let teamChannel = null; 
          if (myRole) { 
-             // 妖狐と呪われし者、てるてる坊主は役職チャット不可
+             // チャット不可役職
              if (['fox', 'cursed', 'teruteru'].includes(myRole)) teamChannel = null;
-             // 賢狼も人狼チームチャットに参加
+             // 人狼系・狂人は「werewolf_team」または「madman」チャンネル
              else if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole)) teamChannel = 'werewolf_team'; 
              else if (['madman'].includes(myRole)) teamChannel = 'madman'; 
              else if (['assassin'].includes(myRole)) teamChannel = 'assassin'; 
              else if (['citizen'].includes(myRole)) teamChannel = null; 
-             else teamChannel = myRole; 
+             else teamChannel = myRole; // その他役職は役職名チャンネル
          } 
          if (teamChannel) { 
              const unsub = onSnapshot(query(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'teamChats'), where('channel', '==', teamChannel)), (snap) => setTeamMessages(snap.docs.map(d => d.data()).sort((a,b) => getMillis(a.createdAt) - getMillis(b.createdAt)))); 
@@ -206,6 +245,41 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
          } else { setTeamMessages([]); } 
     }, [user, myRole, roomCode, isGameEnded]);
 
+    // Effect: チームチャット未読件数カウント
+    useEffect(() => {
+        if (teamMessages.length > lastTeamMsgCountRef.current) {
+            // 現在のタブがチャット以外なら未読加算
+            if (rightPanelTab !== 'chat') {
+                setUnreadTeam(prev => prev + (teamMessages.length - lastTeamMsgCountRef.current));
+            }
+        }
+        lastTeamMsgCountRef.current = teamMessages.length;
+    }, [teamMessages, rightPanelTab]);
+
+    // Effect: Geminiチャット未読件数カウント
+    useEffect(() => {
+        if (geminiMessages.length > lastGeminiMsgCountRef.current) {
+            const lastMsg = geminiMessages[geminiMessages.length - 1];
+            // AIからの返信かつタブがGemini以外の場合に未読加算
+            if (rightPanelTab !== 'gemini' && lastMsg?.sender === 'ai') {
+                setUnreadGemini(prev => prev + 1);
+            }
+        }
+        lastGeminiMsgCountRef.current = geminiMessages.length;
+    }, [geminiMessages, rightPanelTab]);
+
+    // Effect: タブ切り替え時の未読リセット
+    useEffect(() => {
+        if (rightPanelTab === 'chat') {
+            setUnreadTeam(0);
+        } else if (rightPanelTab === 'gemini') {
+            setUnreadGemini(0);
+        }
+    }, [rightPanelTab]);
+
+    // 関数: 投票結果表示後の処理
+    // 処刑結果に応じたオーバーレイ表示
+    // 自分が処刑された場合はYOU DIED演出
     const handleVoteSequenceEnd = () => {
         if (isGameEnded) return;
         if (room.executionResult) {
@@ -213,6 +287,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
             const isMyExecution = me?.status === 'dead' && me?.deathReason === '投票による処刑' && me?.diedDay === roomDay;
 
             if (isMyExecution) {
+                // 自身の処刑演出
                 const myDeathContent = (
                     <div className="mt-6 flex flex-col items-center animate-fade-in-up w-full px-4">
                         <div className="bg-red-950/90 border-4 border-red-600 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(220,38,38,0.5)] max-w-lg w-full relative overflow-hidden">
@@ -243,6 +318,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     }
                 });
             } else {
+                // 他者の処刑結果表示
                 setOverlay({ title: "夜になりました", subtitle: room.executionResult, duration: 5000, isNight: true, onComplete: () => { 
                         setOverlay({ title: "夜になりました", subtitle: "能力者は行動してください", duration: 4000, isNight: true, onComplete: () => setOverlay(null) }); 
                     }
@@ -253,16 +329,17 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         }
     };
 
-    // フェーズ変更検知とオーバーレイ表示
+    // Effect: フェーズ変更検知と演出オーバーレイ
     useEffect(() => {
         if (!room || isGameEnded) return;
         if(room.logs) setLogs(room.logs || []);
 
         if (roomPhase && roomPhase !== lastPhaseRef.current) {
-            setOptimisticPhase(null);
+            setOptimisticPhase(null); // 楽観的フェーズクリア
             const prevPhase = lastPhaseRef.current;
             lastPhaseRef.current = roomPhase;
             
+            // フェーズ変更に伴う状態リセット
             setNightActionDone(false);
             setHasVoted(false);
             setVoteSelection(null);
@@ -271,11 +348,13 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
             setIsReadyProcessing(false); 
             setIsVotingSubmitting(false);
 
+            // 朝の発表フェーズ（死亡・覚醒）
             if (roomPhase.startsWith('announcement_')) { 
                  const isMyDeath = myPlayer?.status === 'dead' && (myPlayer?.diedDay === roomDay - 1 || myPlayer?.diedDay === roomDay);
                  const isExecution = myPlayer?.deathReason === '投票による処刑';
                  
                  let myDeathContent = null;
+                 // 自分が死亡（かつ処刑以外）の場合の演出
                  if (isMyDeath && !isExecution) {
                      const reason = myPlayer?.deathReason || "不明";
                      myDeathContent = (
@@ -304,6 +383,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                      );
                  }
 
+                 // 覚醒イベント演出（呪われし者→人狼など）
+                 // 人狼チームまたは本人のみに表示
                  let awakeningContent = null;
                  if (room.awakeningEvents && room.awakeningEvents.length > 0) {
                      const isWolfTeam = ['werewolf', 'greatwolf', 'wise_wolf', 'madman'].includes(myRole);
@@ -334,6 +415,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                      }
                  }
 
+                 // 朝のオーバーレイ設定
                  setOverlay({ 
                     title: (isMyDeath && !isExecution) ? "" : `${roomDay}日目の朝`, 
                     subtitle: (
@@ -351,9 +433,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                  });
 
             } else if (roomPhase.startsWith('night_')) {
+                 // 投票フェーズからの遷移時は投票結果モーダルを表示
                  if (prevPhase === 'voting') {
                      setShowVoteResult(true);
                  } else {
+                    // 通常の夜遷移
                     if (room.executionResult) {
                         setOverlay({ title: "夜になりました", subtitle: room.executionResult, duration: 4000, isNight: true, onComplete: () => { setOverlay({ title: "夜になりました", subtitle: "能力者は行動してください", duration: 4000, isNight: true, onComplete: () => setOverlay(null) }); } });
                     } else {
@@ -364,7 +448,9 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         }
     }, [room, roomPhase, roomDay, isGameEnded, myPlayer, myRole, user.uid, players]);
 
-    // タイマー管理ロジック
+    // Effect: クライアント側タイマー制御
+    // サーバー時刻と同期しつつカウントダウン
+    // 0になったらフェーズ進行リクエスト(advancePhase)をホストが送信
     useEffect(() => {
         if (roomStatus !== 'playing' || !roomPhaseStartTime) return; 
 
@@ -373,9 +459,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
             const start = getMillis(roomPhaseStartTime) || now; 
             
             let targetTime = 0;
+            // 夜はアクション完了時間(roomNightAllDoneTime)があればそこまで、なければ無限
             if (roomPhase.startsWith('night') && roomNightAllDoneTime) {
                  targetTime = getMillis(roomNightAllDoneTime);
             } else {
+                 // フェーズごとの制限時間設定
                  let duration = 5; 
                  if (roomPhase.startsWith('day')) duration = discussionTime; 
                  else if (roomPhase === 'voting') duration = TIME_LIMITS.VOTING; 
@@ -393,14 +481,18 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 return prev;
             });
 
+            // タイムアップ時の処理
             if (remaining <= 0) {
+                // 自動遷移系フェーズは楽観的に次へ
                 if (roomPhase === 'countdown' && !optimisticPhase) { setOptimisticPhase('role_reveal'); executeForceAdvance(); } 
                 else if (roomPhase === 'role_reveal' && !optimisticPhase) { setOptimisticPhase('day_1'); executeForceAdvance(); }
 
+                // 待機メッセージフラグ設定
                 if (!hasShownWaitMessage && roomPhase !== 'countdown' && roomPhase !== 'role_reveal') {
                     if (roomPhase.startsWith('night') && roomNightAllDoneTime) {} else { setHasShownWaitMessage(true); }
                 }
 
+                // フェーズ進行実行 (ホスト優先)
                 if (!processingRef.current) {
                     const isAutoPhase = roomPhase === 'countdown' || roomPhase === 'role_reveal';
                     const baseDelay = isAutoPhase ? 200 : 1000;
@@ -416,6 +508,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         return () => clearInterval(timer);
     }, [roomStatus, roomPhase, roomPhaseStartTime, roomNightAllDoneTime, hasShownWaitMessage, optimisticPhase, discussionTime]);
 
+    // 関数: フェーズ進行リクエスト (Cloud Functions)
+    // 競合回避のためホストは即時、ゲストは遅延実行
     const executeForceAdvance = () => {
         if (processingRef.current || isGameEnded) return;
         const isHost = roomHostId === user.uid;
@@ -431,6 +525,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         }, delay);
     };
 
+    // 関数: 投票準備完了 (toggleReady)
     const handleVoteReady = async () => { 
         if(!roomCode || !user || isReadyProcessing || isGameEnded) return; 
         setIsReadyProcessing(true); 
@@ -444,6 +539,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         }
     };
 
+    // 関数: チャット送信系
     const handleSendChat = async (text) => { if(!text.trim()) return; await addDoc(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'chat'), { text, senderId: user.uid, senderName: myPlayer.name, createdAt: serverTimestamp(), day: roomDay, phaseLabel: 'day' }); };
     const handleSendGraveMessage = async (text) => { await addDoc(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'graveChat'), { text, senderId: user.uid, senderName: myPlayer.name, createdAt: serverTimestamp() }); };
     const handleSendTeamMessage = async (text) => { 
@@ -455,6 +551,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         await addDoc(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'teamChats'), { text, senderId: user.uid, senderName: myPlayer.name, createdAt: serverTimestamp(), channel, day: roomDay, phaseLabel: 'night' }); 
     };
     
+    // 関数: 投票送信 (submitVote)
     const handleSubmitVote = async () => { 
         if(!voteSelection || !roomCode || !user || isVotingSubmitting) return; 
         setIsVotingSubmitting(true);
@@ -469,6 +566,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         }
     };
 
+    // 関数: アーカイブ表示
     const handleOpenArchive = (day, phase) => { 
         const msgs = messages.filter(m => m.day === day && m.phaseLabel === phase); 
         const teamMsgs = teamMessages.filter(m => m.day === day && m.phaseLabel === phase);
@@ -477,6 +575,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         setShowArchive(true); 
     };
 
+    // 関数: 強制終了確認
     const confirmForceAbort = () => {
         setModalConfig({
             title: "ゲームの強制終了",
@@ -496,12 +595,13 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         });
     };
 
+    // 関数: プレイヤー追放 (kickPlayer)
     const confirmKickPlayer = (playerId) => {
         const targetPlayer = players.find(p => p.id === playerId);
         const pName = targetPlayer?.name;
         const isTargetDev = targetPlayer?.isDev;
 
-        // ホストは開発者を追放できない
+        // 開発者は保護
         if (isHost && isTargetDev) {
             showNotify("開発者を追放することはできません", "error");
             return;
@@ -527,10 +627,12 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         });
     };
 
+    // 分岐: ゲーム終了時 -> リザルト画面
     if (isGameEnded) {
         return <ResultScreen room={room} players={players} setView={setView} setRoomCode={setRoomCode} roomCode={roomCode} myPlayer={myPlayer} user={user} maintenanceMode={maintenanceMode} setNotification={setNotification} />;
     }
 
+    // 分岐: データロード待ち
     if (!room || !players || players.length === 0 || (!isSpectator && (!myPlayer || !myRole))) return (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center text-white overflow-hidden" style={{ backgroundColor: '#030712' }}>
             <Loader className="animate-spin text-blue-400" size={32}/>
@@ -538,27 +640,30 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         </div>
     );
     
-    // 修正: カウントダウン画面ではNotificationを表示しない（displayPhase === 'countdown' の条件分岐）
+    // 分岐: カウントダウン画面 (通知非表示)
     if (displayPhase === 'countdown') return <CountdownScreen roomCode={roomCode} matchId={room.matchId} />;
-    // 修正: 役職紹介画面（RoleRevealScreen）表示時のNotificationを削除
+    // 分岐: 役職紹介画面 (通知非表示)
     if (displayPhase === 'role_reveal') return <RoleRevealScreen role={myRole} teammates={teammates || []} />;
 
+    // 状態判定
     const isNight = displayPhase?.startsWith('night');
     const isDay = displayPhase?.startsWith('day');
     const isVoting = displayPhase === 'voting';
     
-    // 賢狼(wise_wolf)を追加
+    // 夜アクション有無の判定 (賢狼追加済み)
     const isSpecialRole = ['werewolf', 'greatwolf', 'wise_wolf', 'seer', 'sage', 'knight', 'trapper', 'detective', 'medium', 'assassin'].includes(myRole);
     
+    // アクションパネル表示条件
     const showActionPanel = !isDead && isSpecialRole;
-    // 修正: 夜のアクションがない役職すべてにGeminiを表示
+    // Geminiチャット表示条件 (アクションがない生存者)
     const showGeminiPanel = !isDead && !isSpecialRole;
     
+    // チームチャットタイトル
     const teamChatTitle = ['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) ? "人狼チャット" : `${ROLE_DEFINITIONS[myRole || 'citizen']?.name || myRole}チャット`;
-    // 役職チャット表示可能者（妖狐・呪われし者・てるてる坊主・狂人は不可）
-    // ※狂人は仲間はわかるが、チャットには参加できない仕様
+    // チームチャット閲覧権限 (妖狐等は不可)
     const canSeeTeamChat = !isDead && ['werewolf', 'greatwolf', 'wise_wolf', 'seer', 'medium', 'knight', 'trapper', 'sage', 'detective', 'assassin'].includes(myRole);
 
+    // アーカイブボタン生成ロジック
     const archiveButtons = [];
     if(roomDay >= 1) { 
         for(let d=1; d <= roomDay; d++) { 
@@ -567,21 +672,25 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
         } 
     }
 
+    // 安全なプレイヤーオブジェクト (undefined対策)
     const safeMyPlayer = myPlayer || { status: 'alive', name: '観戦者', isReady: false };
 
+    // Geminiへ渡すコンテキストデータ
     const gameContext = {
         myRole,
-        logs: visibleLogsForAi, // 公平性を保つためフィルタリング済みログを渡す
+        logs: visibleLogsForAi, // フィルタ済みログ
         chatHistory: messages,
-        roleSettings: room?.roleSettings, // 役職配分
-        teammates: teammates, // 仲間の情報
-        lastActionResult: lastActionResult, // 夜のアクション結果
-        players: players // 全プレイヤー情報
+        roleSettings: room?.roleSettings,
+        teammates: teammates, 
+        lastActionResult: lastActionResult, 
+        players: players 
     };
 
     return (
-        // 修正: lg:h-screen を削除、lg:overflow-hidden を削除し、スクロール可能に
+        // レイアウト: 画面全体
+        // SP対応: h-screen固定を解除しスクロール可能に
         <div className="lg:h-screen min-h-screen flex flex-col bg-gray-950 text-gray-100 font-sans lg:overflow-y-auto">
+            {/* モーダル群 */}
             {modalConfig && <ConfirmationModal {...modalConfig} />}
             {overlay && <OverlayNotification {...overlay} />}
             {notificationLocal && <Notification {...notificationLocal} onClose={() => setNotificationLocal(null)} />}
@@ -591,6 +700,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
             {showSurvivors && <InfoModal title="生存者確認" onClose={() => setShowSurvivors(false)}><SurvivorsList players={players}/></InfoModal>}
             {showArchive && selectedArchive && <ChatArchiveModal title={selectedArchive.title} messages={selectedArchive.messages} user={user} onClose={() => setShowArchive(false)} />}
             
+            {/* キックモーダル */}
             {showKickModal && (
                 <InfoModal title="プレイヤー追放" onClose={() => setShowKickModal(false)}>
                     <div className="space-y-2">
@@ -608,6 +718,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 </InfoModal>
             )}
 
+            {/* 投票モーダル (生存者のみ) */}
             {isVoting && safeMyPlayer.status === 'alive' && !hasVoted && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
                     <div className="bg-gray-900 border-2 border-red-600 rounded-3xl p-8 max-w-lg w-full text-center space-y-6 shadow-2xl animate-fade-in-up flex flex-col max-h-[85vh]">
@@ -637,9 +748,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 </div>
             )}
             
+            {/* 投票完了待ち表示 */}
             {isVoting && hasVoted && <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4"><div className="text-center"><CheckCircle size={64} className="text-green-500 mx-auto mb-4"/><h2 className="text-3xl font-bold text-white mb-2">投票完了</h2><p className="text-gray-400">結果発表を待っています...</p></div></div>}
             {isVoting && isDead && <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 text-center pointer-events-none w-full"><Gavel size={48} className="text-gray-500 mx-auto mb-2"/><h2 className="text-xl font-bold text-gray-300">現在生存者は投票を行っています...</h2></div>}
 
+            {/* ヘッダー: フェーズ、タイマー、管理ボタン */}
             <header className="flex-none flex items-center justify-between p-3 border-b border-gray-800 bg-gray-950/80 backdrop-blur z-40">
                 <div className="flex items-center gap-4">
                     <div className={`px-4 py-2 rounded-xl border font-bold flex items-center gap-2 ${displayPhase?.startsWith('night') ? "bg-purple-900/50 border-purple-500 text-purple-200" : "bg-gray-800 border-gray-700"}`}>
@@ -660,9 +773,11 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                 </div>
             </header>
 
-            {/* スマホ対応: 縦積みレイアウト、スクロール可能、高さ調整 */}
-            {/* 修正: lg:overflow-hidden を削除 */}
+            {/* メインコンテンツエリア (3カラム構成) */}
+            {/* SP: 縦積み / PC: 横並び */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0 overflow-y-auto">
+                
+                {/* 左カラム: プレイヤー情報 / アーカイブ / 投票準備 */}
                 <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-auto shrink-0">
                     {isDead || isSpectator ? <DeadPlayerInfoPanel players={displayPlayers} /> : <MiniRoleCard role={myRole} teammates={teammates || []} originalRole={originalRole} />}
                     
@@ -685,15 +800,16 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                 </div>
 
+                {/* 中央カラム: 全体チャット / アクションパネル / Geminiパネル */}
                 <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[50vh] min-h-[400px]">
                     {isDead || isSpectator ? (
                         <div className="h-full flex flex-col gap-4 min-h-0">
-                            {/* 霊界チャット：対面モードでも利用可能 */}
+                            {/* 霊界チャット */}
                             <div className="flex-1 border border-purple-500/30 rounded-2xl overflow-hidden min-h-0 flex flex-col">
                                  <ChatPanel messages={graveMessages} user={user} teammates={[]} myPlayer={safeMyPlayer} onSendMessage={handleSendGraveMessage} title="霊界チャット" disableFilter={true} />
                             </div>
                             
-                            {/* 生存者チャット（閲覧用）：対面モードのときは非表示 */}
+                            {/* 生存者チャット閲覧 (対面以外) */}
                             {!inPersonMode && (
                                 <div className="h-1/3 border border-gray-700 rounded-2xl overflow-hidden relative shrink-0 flex flex-col">
                                      <div className="absolute top-0 right-0 bg-gray-800/80 px-3 py-1 text-sm font-bold text-gray-300 z-10 border-bl rounded-bl-xl shadow-md flex items-center gap-2"><Eye size={14} className="text-blue-400"/> 生存者チャット (閲覧のみ)</div>
@@ -705,6 +821,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                         </div>
                     ) : isNight ? (
                         <>
+                            {/* 夜: アクションパネル or Geminiパネル */}
                             {showActionPanel ? (
                                 <div className="h-full bg-gray-900/60 backdrop-blur-xl rounded-2xl border border-purple-500/30 overflow-hidden">
                                     <NightActionPanel myRole={myRole} players={players} onActionComplete={() => setNightActionDone(true)} myPlayer={safeMyPlayer} teammates={teammates || []} roomCode={roomCode} roomData={room} lastActionResult={lastActionResult} isDone={nightActionDone} />
@@ -725,6 +842,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                             )}
                         </>
                     ) : (
+                        // 昼: 生存者チャット or 対面モード表示
                         inPersonMode ? (
                             <div className="h-full min-h-0 bg-gray-900/40 backdrop-blur rounded-2xl border border-blue-500/20 p-4 flex flex-col justify-center items-center text-center">
                                 <Mic size={48} className="text-blue-500 mb-4 animate-pulse"/>
@@ -737,6 +855,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                     )}
                 </div>
 
+                {/* 右カラム: ログ / 役職チャット / Gemini (タブ切り替え) */}
                 <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full h-[40vh] min-h-[300px]">
                     {!isDead && !isSpectator && (
                         <div className="flex gap-2 shrink-0 lg:hidden">
@@ -745,13 +864,57 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                         </div>
                     )}
 
-                    {/* 役職チャット：対面モードでも利用可能。ただし生存者チャットは不可 */}
+                    {/* 夜かつチームチャット参加権限あり */}
                     {isNight && canSeeTeamChat && !isSpectator ? (
                         <>
-                            <div className="flex-1 min-h-0"><ChatPanel messages={teamMessages || []} user={user} teammates={teammates || []} myPlayer={safeMyPlayer} title={teamChatTitle} isTeamChat={true} onSendMessage={handleSendTeamMessage} currentDay={displayDay} currentPhase={displayPhase} disableFilter={true} /></div>
-                            <div className="flex-1 min-h-0"><LogPanel logs={logs || []} showSecret={isDead} user={user} /></div>
+                            {showActionPanel ? (
+                                <div className="flex-1 min-h-0 flex flex-col bg-gray-900/60 backdrop-blur-xl rounded-2xl border border-gray-700 overflow-hidden shadow-lg">
+                                    {/* タブ切り替え: 役職チャット / Gemini */}
+                                    <div className="flex border-b border-gray-700">
+                                        <button 
+                                            onClick={() => setRightPanelTab('chat')}
+                                            className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'chat' ? 'bg-purple-900/30 text-purple-200' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700'}`}
+                                        >
+                                            <MessageSquare size={16}/> {teamChatTitle}
+                                            {unreadTeam > 0 && (
+                                                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce">{unreadTeam}</span>
+                                            )}
+                                        </button>
+                                        <button 
+                                            onClick={() => setRightPanelTab('gemini')}
+                                            className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'gemini' ? 'bg-indigo-900/30 text-indigo-200' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700'}`}
+                                        >
+                                            <Sparkles size={16}/> Gemini Chat
+                                            {unreadGemini > 0 && (
+                                                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce">{unreadGemini}</span>
+                                            )}
+                                        </button>
+                                    </div>
+                                    <div className="flex-1 min-h-0 relative">
+                                        {rightPanelTab === 'chat' ? (
+                                            <ChatPanel messages={teamMessages || []} user={user} teammates={teammates || []} myPlayer={safeMyPlayer} title={teamChatTitle} isTeamChat={true} onSendMessage={handleSendTeamMessage} currentDay={displayDay} currentPhase={displayPhase} disableFilter={true} />
+                                        ) : (
+                                            <GeminiChatPanel 
+                                                playerName={safeMyPlayer.name} 
+                                                inPersonMode={inPersonMode} 
+                                                gameContext={gameContext} 
+                                                currentDay={displayDay} 
+                                                messages={geminiMessages} 
+                                                setMessages={setGeminiMessages} 
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                // アクションパネルがない場合 (Geminiが中央にあるため、右は役職チャットのみ表示)
+                                <div className="flex-1 min-h-0"><ChatPanel messages={teamMessages || []} user={user} teammates={teammates || []} myPlayer={safeMyPlayer} title={teamChatTitle} isTeamChat={true} onSendMessage={handleSendTeamMessage} currentDay={displayDay} currentPhase={displayPhase} disableFilter={true} /></div>
+                            )}
+                            
+                            {/* アクションパネルがない場合はログを表示 (スマホでは非表示推奨だが実装維持) */}
+                            {!showActionPanel && <div className="flex-1 min-h-0"><LogPanel logs={logs || []} showSecret={isDead} user={user} /></div>}
                         </>
                     ) : (
+                        // デフォルト: ログパネル
                         <div className="h-full min-h-0"><LogPanel logs={logs || []} showSecret={isDead || isSpectator} user={user} /></div>
                     )}
                 </div>

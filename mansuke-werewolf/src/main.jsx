@@ -4,8 +4,11 @@ import App from './App.jsx'
 import './index.css'
 
 // アプリケーションのエントリーポイント
-// StrictModeは開発中の二重レンダリング等のチェック用
+// HTMLのルート要素を取得し、Reactアプリケーションをマウントする
 ReactDOM.createRoot(document.getElementById('root')).render(
+  // StrictMode: 開発環境専用ラッパー
+  // 意図しない副作用を検出するため、コンポーネントを二重にレンダリングする
+  // 本番ビルド時には影響しない
   <React.StrictMode>
     <App />
   </React.StrictMode>,

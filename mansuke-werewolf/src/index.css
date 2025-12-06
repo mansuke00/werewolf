@@ -1,57 +1,83 @@
+/* Tailwind CSSの基本ディレクティブ読み込み */
+/* base: ブラウザリセット等 */
+/* components: コンポーネントクラス */
+/* utilities: ユーティリティクラス */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ベースレイヤーのカスタマイズ */
+/* アプリケーション全体に適用される基本スタイル */
 @layer base {
   body {
+    /* 背景色: bg-gray-950 (ダークテーマ) */
+    /* 文字色: text-gray-100 (白に近いグレー) */
+    /* アンチエイリアス有効化 */
     @apply bg-gray-950 text-gray-100 antialiased;
-    /* overflow-hidden を削除しました */
-    /* モバイルでのスクロールバウンスなどを抑制 */
+    
+    /* スクロール制御 */
+    /* overflow-hiddenは削除済み (スクロール可能にするため) */
+    /* モバイルブラウザでのプルリフレッシュやバウンス効果を無効化 */
     overscroll-behavior-y: none;
   }
 }
 
+/* ユーティリティレイヤーの拡張 */
+/* 独自のクラス定義やアニメーションを追加 */
 @layer utilities {
-  /* カスタムスクロールバー（Webkit） */
+  /* --- カスタムスクロールバー設定 (Webkit系ブラウザ用) --- */
+  
+  /* スクロールバー全体の幅と高さ */
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
 
+  /* スクロールバーの軌道 (背景) */
   .custom-scrollbar::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.1);
     border-radius: 3px;
   }
 
+  /* スクロールバーのつまみ (ドラッグ部分) */
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(75, 85, 99, 0.5);
+    background: rgba(75, 85, 99, 0.5); /* gray-600相当 */
     border-radius: 3px;
   }
 
+  /* つまみのホバー時スタイル */
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(107, 114, 128, 0.8);
+    background: rgba(107, 114, 128, 0.8); /* gray-500相当 */
   }
 
-  /* アニメーション定義 */
+  /* --- カスタムアニメーションユーティリティ --- */
+
+  /* フェードイン (不透明度 0 -> 1) */
   .animate-fade-in {
     animation: fadeIn 0.3s ease-out forwards;
   }
   
+  /* フェードインアップ (下から浮き上がる) */
   .animate-fade-in-up {
     animation: fadeInUp 0.5s ease-out forwards;
   }
   
+  /* ゆっくりとしたバウンス (注目を集める要素用) */
   .animate-bounce-slow {
     animation: bounce 3s infinite;
   }
 
+  /* プログレスバー伸長 (幅 0% -> 100%) */
   .animate-progress-bar {
       animation: progress linear forwards;
   }
   
+  /* 幅縮小 (幅 100% -> 0%): タイマーバーなどに使用 */
   .animate-shrink-width {
       animation: shrinkWidth linear forwards;
   }
+
+  /* --- キーフレーム定義 --- */
 
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -74,7 +100,8 @@
   }
 }
 
-/* スマホでのタップハイライトを削除 */
+/* モバイル対応リセット */
+/* タップ時のハイライト色を透明にする (ネイティブアプリ風の挙動) */
 * {
     -webkit-tap-highlight-color: transparent;
 }

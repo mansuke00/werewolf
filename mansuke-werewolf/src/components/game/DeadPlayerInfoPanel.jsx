@@ -1,55 +1,66 @@
 import React, { useState, useMemo } from 'react';
-import { Skull, User, Crown, Eye, WifiOff, Users, SortAsc, LayoutGrid } from 'lucide-react';
+import { Skull, User, Crown, Eye, WifiOff, Users, SortAsc, LayoutGrid, BadgeCheck } from 'lucide-react';
 import { ROLE_DEFINITIONS } from '../../constants/gameData';
 import { isPlayerOnline } from '../../utils/helpers';
 
 export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職" }) => {
-    const [viewMode, setViewMode] = useState('role'); // 'role' | 'name'
+    // 表示モード管理。'role'（役職・陣営別）、'name'（名前順）の切り替え
+    const [viewMode, setViewMode] = useState('role');
 
-    // players配列が存在しない場合は空配列として扱う
+    // playersがundefined/nullの場合の対策。空配列フォールバック
     const safePlayers = players || [];
 
-    // 表示対象のフィルタリング
-    // 役職情報(role)を持っている、または死亡/追放ステータスの人、または観戦者
+    // 表示対象フィルタリング
+    // 条件: 役職判明済み OR 死亡 OR 追放 OR 観戦者
     const targets = useMemo(() => {
         return safePlayers.filter(p => p.role || ['dead', 'vanished'].includes(p.status) || p.isSpectator);
     }, [safePlayers]);
 
-    // プレイヤーデータの加工（表示用情報の付与）
+    // 表示用データ加工処理
+    // 生データにアイコン、色定義、表示名などを付与してレンダリングしやすくする
     const processedPlayers = useMemo(() => {
         return targets.map(p => {
             const roleKey = p.role || "unknown";
+            // 観戦者フラグの正規化。isSpectatorプロパティまたはroleがspectatorの場合
             const isSpectator = p.isSpectator || roleKey === 'spectator';
-            // 観戦者の場合のフォールバック
+            
+            // 定義取得。観戦者の場合は強制的に観戦者定義を使用
             const def = ROLE_DEFINITIONS[roleKey] || (isSpectator ? ROLE_DEFINITIONS['spectator'] : null);
             
+            // 表示名・アイコン決定。定義がない場合はデフォルト値
             const roleName = def ? def.name : (roleKey === 'unknown' ? "不明" : roleKey);
             const Icon = def ? def.icon : (isSpectator ? Eye : User);
             const team = def ? def.team : 'other';
 
-            // 陣営カラー定義
+            // 陣営ごとのスタイル定義（色、枠線、背景、ラベル）
+            // デフォルト: その他（グレー）
             let teamColor = "text-gray-400";
             let borderColor = "border-gray-700";
             let bgColor = "bg-gray-800/40";
             let teamLabel = "その他";
 
+            // 陣営判定ロジック
             if (team === 'werewolf') {
+                // 人狼陣営: 赤系
                 teamColor = "text-red-400";
                 borderColor = "border-red-900/30";
                 bgColor = "bg-red-900/10";
                 teamLabel = "人狼陣営";
             } else if (team === 'citizen') {
+                // 市民陣営: 青系
                 teamColor = "text-blue-400";
                 borderColor = "border-blue-900/30";
                 bgColor = "bg-blue-900/10";
                 teamLabel = "市民陣営";
             } else if (team === 'third') {
+                // 第三陣営: オレンジ系
                 teamColor = "text-orange-400";
                 borderColor = "border-orange-900/30";
                 bgColor = "bg-orange-900/10";
                 teamLabel = "第三陣営";
             }
 
+            // 観戦者上書き設定: 紫系
             if (isSpectator) {
                 teamColor = "text-purple-400";
                 borderColor = "border-purple-900/30";
@@ -57,6 +68,7 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                 teamLabel = "観戦者";
             }
 
+            // 加工済みオブジェクト返却
             return {
                 ...p,
                 roleName,
@@ -71,10 +83,12 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
         });
     }, [targets]);
 
-    // 表示データの並び替え・グループ化
+    // コンテンツ生成ロジック
+    // viewModeによってレンダリング構造を分岐
     const content = useMemo(() => {
+        // モード: 名前順
         if (viewMode === 'name') {
-            // 名前順でソート
+            // 文字コード順でソート
             const sorted = [...processedPlayers].sort((a, b) => a.name.localeCompare(b.name));
             return (
                 <div className="grid grid-cols-1 gap-2">
@@ -82,23 +96,28 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                 </div>
             );
         } else {
-            // 役職（陣営）順でグループ化し、さらにその中で役職ごとにまとめる
-            // 構造: groups[team][roleKey] = [player1, player2...]
+            // モード: 役職順（グルーピング表示）
+            
+            // グルーピング用コンテナ初期化
+            // 構造: groups[陣営キー][役職キー] = [プレイヤー配列]
             const groups = {
                 werewolf: {},
                 citizen: {},
                 third: {},
-                spectator: [], // 観戦者は役職分けしない（全員観戦者なので）
+                spectator: [], // 観戦者は役職細分化不要のため配列直置き
                 other: {}
             };
 
+            // 分類処理
             processedPlayers.forEach(p => {
                 if (p.isSpectator) {
                     groups.spectator.push(p);
                 } else {
+                    // 陣営キー検証（未定義の陣営はotherへ）
                     const teamKey = groups[p.team] ? p.team : 'other';
                     const roleKey = p.role || 'unknown';
                     
+                    // 役職配列初期化
                     if (!groups[teamKey][roleKey]) {
                         groups[teamKey][roleKey] = [];
                     }
@@ -106,6 +125,7 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                 }
             });
 
+            // 表示順序定義
             const sections = [
                 { key: 'werewolf', label: '人狼陣営', color: 'text-red-400', bg: 'bg-red-950/30', border: 'border-red-900/50' },
                 { key: 'citizen', label: '市民陣営', color: 'text-blue-400', bg: 'bg-blue-950/30', border: 'border-blue-900/50' },
@@ -117,9 +137,10 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
             return (
                 <div className="space-y-4">
                     {sections.map(section => {
-                        // 観戦者の特別処理（役職サブグループを作らない）
+                        // 観戦者セクション特例処理（サブグループなしフラット表示）
                         if (section.key === 'spectator') {
                             const players = groups.spectator;
+                            // 該当者なしなら非表示
                             if (players.length === 0) return null;
                             return (
                                 <div key={section.key} className={`rounded-xl overflow-hidden border ${section.border}`}>
@@ -134,12 +155,13 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                             );
                         }
 
-                        // 通常陣営の処理
+                        // 通常陣営処理（役職サブグループあり）
                         const roleGroups = groups[section.key];
                         const roleKeys = Object.keys(roleGroups);
+                        // 該当役職なしなら非表示
                         if (roleKeys.length === 0) return null;
 
-                        // 総人数計算
+                        // セクション内合計人数計算
                         const totalCount = roleKeys.reduce((acc, key) => acc + roleGroups[key].length, 0);
 
                         return (
@@ -151,18 +173,20 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                                 </div>
                                 
                                 <div className="p-2 bg-black/10 space-y-2">
+                                    {/* 役職ごとのブロック生成 */}
                                     {roleKeys.map(roleKey => {
                                         const players = roleGroups[roleKey];
-                                        // 役職名を取得（一人目の情報から取るのが手っ取り早い）
+                                        // 役職名はグループ内1人目から参照（全員同じはず）
                                         const roleName = players[0].roleName;
                                         
                                         return (
                                             <div key={roleKey} className="bg-gray-900/40 rounded-lg border border-gray-700/50 overflow-hidden">
-                                                {/* 役職サブヘッダー */}
+                                                {/* 役職名ヘッダー */}
                                                 <div className="px-2 py-1 bg-black/20 text-[10px] text-gray-400 font-bold border-b border-gray-700/30 flex justify-between">
                                                     <span>{roleName}</span>
                                                     <span>x{players.length}</span>
                                                 </div>
+                                                {/* プレイヤーリスト */}
                                                 <div className="p-1 grid grid-cols-1 gap-1">
                                                     {players.map(p => <PlayerCard key={p.id} player={p} />)}
                                                 </div>
@@ -180,13 +204,13 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
 
     return (
         <div className="flex flex-col h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
-            {/* ヘッダー */}
+            {/* パネルヘッダー */}
             <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex items-center justify-between shrink-0">
                 <span className="font-bold text-gray-200 flex items-center gap-2 text-sm truncate">
                     <Users size={16} className="text-blue-400 shrink-0"/> {title}
                 </span>
                 
-                {/* 表示切り替えタブ */}
+                {/* トグルボタンエリア */}
                 <div className="flex bg-black/30 rounded-lg p-0.5 border border-gray-700 shrink-0">
                     <button 
                         onClick={() => setViewMode('role')}
@@ -203,14 +227,16 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                 </div>
             </div>
             
-            {/* コンテンツエリア */}
+            {/* スクロールエリア */}
             <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
                 {targets.length === 0 ? (
+                    // 該当者なし時の空表示
                     <div className="h-full flex flex-col items-center justify-center text-gray-500 text-sm">
                         <Skull size={32} className="mb-2 opacity-50"/>
                         <p>該当するプレイヤーはいません</p>
                     </div>
                 ) : (
+                    // 生成済みコンテンツ描画
                     content
                 )}
             </div>
@@ -218,40 +244,55 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
     );
 };
 
-// プレイヤーカードコンポーネント
+// 子コンポーネント: 個別プレイヤーカード
 const PlayerCard = ({ player, minimal }) => {
+    // 必要なプロパティを分割代入
     const { name, roleName, Icon, teamColor, borderColor, bgColor, status, originalRole, deathReason, isHost, isSpectator } = player;
 
-    // 観戦者以外で、かつstatusがvanishedの場合のみ表示
+    // 追放タグ表示条件: 観戦者ではなく、かつステータスが追放(vanished)
     const showVanishedTag = !isSpectator && status === 'vanished';
     
-    // 観戦者は死亡判定にしない
+    // 死亡判定: 観戦者は死亡扱いしない（スタイル適用除外のため）
     const isDead = !isSpectator && status === 'dead';
 
     return (
         <div className={`flex items-center p-2.5 rounded-lg border ${borderColor} ${bgColor} transition hover:bg-gray-700/40 relative overflow-hidden group`}>
             
+            {/* アイコンエリア（左側） */}
             <div className={`p-2 rounded-full bg-black/30 mr-3 ${teamColor} shrink-0 relative`}>
                 <Icon size={18} className="shrink-0"/>
+                {/* ホスト（王冠）アイコンオーバーレイ */}
                 {isHost && <div className="absolute -top-1 -left-1 bg-yellow-500 text-black p-0.5 rounded-full border border-black"><Crown size={8}/></div>}
             </div>
             
+            {/* メイン情報エリア */}
             <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-0.5">
+                <div className="flex items-center gap-2 mb-0.5">
+                    {/* 名前表示。死亡/追放時は取り消し線と色変更 */}
                     <span className={`font-bold truncate text-sm ${isDead || showVanishedTag ? 'text-gray-400 line-through decoration-red-500/50' : 'text-gray-200'}`}>
                         {name}
                     </span>
-                    <div className="flex items-center gap-1 shrink-0">
+                    {/* 開発者バッジ表示 */}
+                    {player.isDev && (
+                        <span className="text-[9px] md:text-[10px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30 flex items-center gap-0.5 shrink-0">
+                            <BadgeCheck size={10}/> 開発者
+                        </span>
+                    )}
+                    {/* ステータスアイコンエリア（右寄せ） */}
+                    <div className="flex items-center gap-1 shrink-0 ml-auto">
+                        {/* オフライン表示 */}
                         {!isPlayerOnline(player) && <WifiOff size={10} className="text-red-500"/>}
-                        {/* DEADタグは削除しました */}
+                        {/* 追放ラベル */}
                         {showVanishedTag && <span className="text-[9px] text-gray-500 font-bold border border-gray-700 px-1 rounded bg-black/30">追放</span>}
                     </div>
                 </div>
                 
+                {/* 役職・サブ情報行 */}
                 <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
                     <span className={`text-xs font-bold ${teamColor}`}>
                         {isSpectator ? "観戦者" : roleName}
                     </span>
+                    {/* 元役職表示（役職変化があった場合のみ。観戦者は除外） */}
                     {!isSpectator && originalRole && originalRole !== player.role && (
                         <span className="text-[10px] text-gray-500">
                             (元: {ROLE_DEFINITIONS[originalRole]?.name || originalRole})
@@ -260,7 +301,7 @@ const PlayerCard = ({ player, minimal }) => {
                 </div>
             </div>
 
-            {/* 死因表示 - 観戦者以外 */}
+            {/* 死因表示エリア（観戦者以外かつ死因ありの場合） */}
             {!isSpectator && deathReason && (
                 <div className="text-right pl-2 max-w-[80px] shrink-0 flex flex-col items-end justify-center">
                     <span className="text-[9px] text-gray-500 leading-none mb-0.5">死因</span>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Sun, Moon, Loader, FileText, AlertOctagon, Trophy, Frown, RefreshCw, LogOut, Skull, Sparkles, Smile, Copy, Search, X } from 'lucide-react';
 import { getDoc, doc, updateDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../config/firebase'; // ローカル環境の構成に基づいたパス
+import { db, functions } from '../config/firebase'; 
 import { ROLE_DEFINITIONS } from '../constants/gameData';
 import { LogPanel } from '../components/game/LogPanel';
 import { DeadPlayerInfoPanel } from '../components/game/DeadPlayerInfoPanel';
@@ -10,7 +10,10 @@ import { InfoModal } from '../components/ui/InfoModal';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { Notification } from '../components/ui/Notification';
 
+// コンポーネント: ゲーム結果画面
+// 役割: 勝敗表示、役職開示、ログ確認、再戦・解散操作
 export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, myPlayer, user, maintenanceMode, setNotification }) => {
+    // データロード中表示
     if (!room || !players || players.length === 0) {
         return (
             <div className="min-h-screen bg-black flex items-center justify-center text-white">
@@ -20,39 +23,41 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         );
     }
 
+    // ステータス判定
     const isAborted = room.status === 'aborted';
-    // 解散された場合、App.jsxで検知してホームに戻るはずだが、念のためここでもチェック
     const isClosed = room.status === 'closed';
 
+    // 勝敗判定フラグ
     const winner = room.winner;
     const isCitizenWin = winner === 'citizen';
     const isFoxWin = winner === 'fox';
     const isWerewolfWin = winner === 'werewolf';
-    // サーバー側で判定されたてるてる坊主勝利フラグ
-    const isTeruteruWin = room.teruteruWon === true;
+    const isTeruteruWin = room.teruteruWon === true; // サーバー側計算結果
     
     const logs = room.logs || [];
     
+    // 権限フラグ
     const isHost = room.hostId === user?.uid;
     const isDev = myPlayer?.isDev === true;
     const hasControl = isHost || isDev;
 
     const roomId = room.id || roomCode || "";
-    const matchId = room.matchId || "---"; // 試合ID
+    const matchId = room.matchId || "---"; 
     
-    const [showDetail, setShowDetail] = useState(false);
-    const [showRoleDetail, setShowRoleDetail] = useState(false);
-    const [fullPlayers, setFullPlayers] = useState(players || []); 
-    const [myTrueRole, setMyTrueRole] = useState(null);
+    // UI状態管理
+    const [showDetail, setShowDetail] = useState(false); // ログ詳細
+    const [showRoleDetail, setShowRoleDetail] = useState(false); // 役職一覧
+    const [fullPlayers, setFullPlayers] = useState(players || []); // 役職開示済みプレイヤーリスト
+    const [myTrueRole, setMyTrueRole] = useState(null); // 自分の正体
     const [dataLoaded, setDataLoaded] = useState(false);
-    const [loading, setLoading] = useState(false); // ボタン操作用ローディング
+    const [loading, setLoading] = useState(false); 
     
-    // 試合IDの表示管理
+    // 試合ID表示バナー制御
     const [showMatchId, setShowMatchId] = useState(true);
-    // モーダル管理
+    // モーダル設定
     const [modalConfig, setModalConfig] = useState(null);
 
-    // 部屋が解散されたらホームへ戻る
+    // Effect: 部屋解散検知 -> ホームへ遷移
     useEffect(() => {
         if (isClosed) {
             setView('home');
@@ -60,10 +65,13 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     }, [isClosed, setView, setRoomCode]);
 
+    // Effect: 役職情報の全開示 (Cloud Functions / Firestore)
+    // ゲーム終了時のみ実行
     useEffect(() => {
         const fetchRoles = async () => {
             if (!roomId) return;
             
+            // 自分の正体取得 (観戦者は固定)
             if(user && !myPlayer?.isSpectator) {
                 try {
                     const mySecretRef = doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomId, 'players', user.uid, 'secret', 'roleData');
@@ -71,15 +79,14 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                     if(mySecret.exists()) setMyTrueRole(mySecret.data().role);
                 } catch(e) { console.error("Error fetching my secret:", e); }
             } else if (myPlayer?.isSpectator) {
-                // 観戦者の場合は役職を「観戦者」とする
                 setMyTrueRole('spectator');
             }
 
+            // 全プレイヤーの正体取得
             try {
                 const fn = httpsCallable(functions, 'getAllPlayerRoles');
                 const res = await fn({ roomCode: roomId });
                 if (res.data && res.data.players) {
-                    // 観戦者情報を補正してセット
                     const processedPlayers = res.data.players.map(p => {
                         if (p.isSpectator) return { ...p, role: 'spectator' };
                         return p;
@@ -100,25 +107,28 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     }, [room, players, roomId, user, myPlayer]);
 
+    // Memo: 勝利プレイヤーの抽出
+    // 各陣営の勝利条件に基づいてフィルタリング
+    // 観戦者は勝敗判定から除外
     const winningPlayers = useMemo(() => {
         if (!dataLoaded || isAborted) return [];
 
         return fullPlayers.filter(p => {
             const role = p.role;
-            if (!role || role === 'spectator') return false; // 観戦者は除外
+            if (!role || role === 'spectator') return false; 
 
-            // 通常の勝利判定
+            // 妖狐単独勝利
             if (isFoxWin) { if(role === 'fox') return true; }
+            // 人狼勝利 (人狼系 + 狂人)
             else if (isWerewolfWin) { 
-                // 賢狼(wise_wolf)を追加
                 if(['werewolf', 'greatwolf', 'wise_wolf', 'madman'].includes(role)) return true; 
             }
+            // 市民勝利 (上記以外かつ第三陣営以外)
             else if (isCitizenWin) { 
-                // 賢狼(wise_wolf)も除外対象に追加（市民側ではない）
                 if(!['werewolf', 'greatwolf', 'wise_wolf', 'madman', 'fox', 'teruteru'].includes(role)) return true; 
             }
 
-            // てるてる坊主の追加勝利判定（全員処刑されていたら勝利）
+            // てるてる坊主追加勝利
             if (role === 'teruteru' && isTeruteruWin) {
                 return true;
             }
@@ -127,20 +137,19 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         });
     }, [fullPlayers, dataLoaded, isAborted, isFoxWin, isWerewolfWin, isCitizenWin, isTeruteruWin]);
 
+    // 個人の勝敗判定 (YOU WIN / YOU LOSE / DRAW)
     let personalResult = null; 
     if (myPlayer?.isSpectator) {
-        personalResult = null; // 観戦者は勝ち負けなし
+        personalResult = null; 
     } else if (isAborted) {
         personalResult = 'draw';
     } else if (myTrueRole) {
         const myRoleKey = myTrueRole;
-        // 賢狼(wise_wolf)を追加
         const isMySideWolf = ['werewolf', 'greatwolf', 'wise_wolf', 'madman'].includes(myRoleKey);
         const isMySideFox = myRoleKey === 'fox';
         const isTeruteru = myRoleKey === 'teruteru';
         
         if (isTeruteru) {
-            // てるてる坊主は、teruteruWonがtrueなら勝利（追加勝利）
             personalResult = isTeruteruWin ? 'win' : 'lose';
         } else {
             if (isCitizenWin && !isMySideWolf && !isMySideFox) personalResult = 'win';
@@ -150,7 +159,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     }
 
-    // 表示テキスト決定ロジック
+    // タイトル表示ロジック
     let mainTitle = "";
     let titleGradient = "";
     
@@ -158,13 +167,11 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         mainTitle = "NO CONTEST";
         titleGradient = "from-gray-400 to-gray-600";
     } else if (myPlayer?.isSpectator) {
-        // 観戦者の場合
         if (isCitizenWin) { titleGradient = "from-yellow-400 to-orange-500"; }
         else if (isFoxWin) { titleGradient = "from-orange-400 to-pink-500"; }
         else { titleGradient = "from-red-500 to-purple-600"; }
         mainTitle = "GAME SET"; 
     } else {
-        // プレイヤーの場合
         if (personalResult === 'win') {
             mainTitle = "YOU WIN!!!";
             titleGradient = "from-yellow-300 via-yellow-500 to-orange-500";
@@ -177,43 +184,41 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     }
 
+    // 結果詳細テキスト
     let resultDescription = "";
     if (isAborted) {
         resultDescription = "ホストにより強制終了されました";
     } else {
         if (isTeruteruWin) {
-            // てるてる勝利時の特別テキスト
             if (isCitizenWin) resultDescription = "市民陣営＋てるてる坊主の勝ち";
             else if (isWerewolfWin) resultDescription = "人狼陣営＋てるてる坊主の勝ち";
             else if (isFoxWin) resultDescription = "妖狐＋てるてる坊主の勝ち";
-            else resultDescription = "てるてる坊主の勝ち"; // 万が一の場合
+            else resultDescription = "てるてる坊主の勝ち"; 
         } else {
-            // 通常時のテキスト
             if (isCitizenWin) resultDescription = "市民陣営の勝利";
             else if (isFoxWin) resultDescription = "妖狐の単独勝利";
             else resultDescription = "人狼陣営の勝利";
         }
     }
 
-    // もう一度遊ぶ（ホスト操作）
+    // 関数: 再戦 (ロビーへリセット)
     const handleReplay = async () => {
         if (maintenanceMode) {
-            setView('home'); // メンテナンスモード画面（ホーム）へ強制遷移
+            setView('home'); 
             return;
         }
         if(!hasControl || loading) return;
-        setLoading(true); // ローディング開始
+        setLoading(true); 
         try {
             const fn = httpsCallable(functions, 'resetToLobby');
             await fn({ roomCode: roomId });
-            // 成功後はApp.jsxが部屋ステータス(waiting)を検知して遷移させるのを待つ
         } catch(e) {
             setNotification({ message: "エラーが発生しました: " + e.message, type: "error" });
-            setLoading(false); // 失敗時はローディング解除
+            setLoading(false); 
         }
     };
 
-    // 部屋を解散する（ホスト操作）
+    // 関数: 部屋解散 (削除)
     const confirmCloseRoom = () => {
         if (maintenanceMode) {
             setView('home');
@@ -228,12 +233,10 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
             confirmText: "解散する",
             onConfirm: async () => {
                 setModalConfig(null);
-                setLoading(true); // ローディング開始
+                setLoading(true); 
                 try {
-                    // updateDocではなく、Cloud FunctionsのdeleteRoomを使って確実に削除する
                     const fn = httpsCallable(functions, 'deleteRoom');
                     await fn({ roomCode: roomId });
-                    // 削除成功後はApp.jsxが検知して遷移させる
                 } catch(e) { 
                     console.error(e);
                     setNotification({ message: "解散に失敗しました: " + e.message, type: "error" });
@@ -244,15 +247,15 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         });
     };
     
-    // ホームに戻る（自分だけ）
+    // 関数: 退出 (ホームへ戻る)
     const handleExit = () => {
         setRoomCode("");
         setView('home');
     };
 
+    // 関数: 試合IDコピー
     const copyMatchId = () => {
         navigator.clipboard.writeText(matchId);
-        // 簡易的なフィードバック
         const el = document.getElementById("copy-feedback");
         if(el) {
             el.classList.remove("opacity-0");
@@ -260,6 +263,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         }
     };
 
+    // 分岐: 詳細表示モード
     if(showDetail) return <div className="fixed inset-0 bg-gray-950 flex flex-col z-[100] p-4 md:p-6">
         {showRoleDetail && <InfoModal title="全プレイヤー役職" onClose={() => setShowRoleDetail(false)}><DeadPlayerInfoPanel players={fullPlayers} title="プレイヤーの役職" /></InfoModal>}
         <div className="max-w-6xl w-full mx-auto h-full flex flex-col">
@@ -274,16 +278,15 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         </div>
     </div>;
 
+    // メイン表示 (結果サマリー)
     return (
         <div className="fixed inset-0 bg-gray-950 flex flex-col z-[100]">
             {modalConfig && <ConfirmationModal {...modalConfig} />}
-            {/* 通知コンポーネントを削除しました（App.jsx側で表示されるため） */}
             
-            {/* スクロールエリア */}
             <div className="flex-1 overflow-y-auto w-full flex flex-col items-center p-4 md:p-6 pb-24">
                 <div className="max-w-6xl w-full text-center space-y-4 md:space-y-8 animate-fade-in-up pt-10">
                     
-                    {/* 勝利アイコン表示エリア */}
+                    {/* 勝利陣営アイコン */}
                     {isAborted ? (
                         <div className="inline-block p-4 rounded-full bg-red-900/50 mb-2 md:mb-4"><AlertOctagon size={48} md:size={64} className="text-red-500"/></div>
                     ) : (
@@ -293,22 +296,23 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                         </div>
                     )}
                     
-                    {/* メインタイトル */}
+                    {/* タイトル */}
                     <h1 className={`text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r ${titleGradient} drop-shadow-2xl`}>
                         {mainTitle}
                     </h1>
                     
-                    {/* 詳細説明 */}
+                    {/* 説明テキスト */}
                     <div className="flex flex-col items-center justify-center gap-2">
                         <p className="text-lg md:text-2xl text-white font-bold tracking-widest">{resultDescription}</p>
                     </div>
                     
+                    {/* アニメーションスタイル定義 */}
                     <style>{`
                         @keyframes shine-gold { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
                         @keyframes pulse-border { 0% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } 50% { border-color: rgba(253, 224, 71, 1); box-shadow: 0 0 40px rgba(234, 179, 8, 0.6); } 100% { border-color: rgba(253, 224, 71, 0.5); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); } }
                     `}</style>
 
-                    {/* 勝利プレイヤー一覧 */}
+                    {/* 勝利プレイヤーカードリスト */}
                     {!isAborted && (
                         <div className="flex flex-col items-center mt-8 w-full">
                               <p className="text-gray-400 text-xs md:text-sm mb-4 uppercase tracking-widest font-bold flex items-center gap-2"><Trophy size={16} className="text-yellow-500"/> WINNERS</p>
@@ -338,7 +342,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                         </div>
                     )}
 
-                    {/* アクションボタン */}
+                    {/* アクションボタン群 */}
                     <div className="pt-8 flex flex-col items-center gap-3 w-full max-w-md mx-auto">
                           <button onClick={() => setShowDetail(true)} className="w-full px-8 py-3 md:py-4 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm md:text-base"><FileText size={20}/> 詳細ログを確認</button>
                           {hasControl ? (
@@ -377,7 +381,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                 </div>
             </div>
 
-            {/* 試合IDカード (画面右下に固定表示 - スクロール影響回避のためルート直下に移動) */}
+            {/* 試合ID表示バナー (右下) */}
             {showMatchId && (
                 <div className="absolute bottom-4 right-4 z-[200] animate-fade-in-up">
                     <div className="bg-gray-900/90 border border-indigo-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(99,102,241,0.2)] backdrop-blur-md relative hover:border-indigo-500/50 transition max-w-sm w-full mx-auto md:mx-0">

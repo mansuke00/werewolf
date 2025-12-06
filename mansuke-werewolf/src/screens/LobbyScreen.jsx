@@ -1,13 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Users, Crown, Settings, Mic, Play, Loader, Info, AlertTriangle, LogOut, Trash2, Shield, Moon, Sun, Ghost, Swords, Eye, Skull, Search, User, Crosshair, Smile, Check, Maximize2, Clock, X, BadgeCheck } from 'lucide-react';
+import { Users, Crown, Settings, Mic, Play, Loader, Info, AlertTriangle, LogOut, Trash2, Shield, Moon, Sun, Ghost, Swords, Eye, Skull, Search, User, Crosshair, Smile, Check, Maximize2, Clock, X, BadgeCheck, Globe } from 'lucide-react';
 import { updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase';
 import { isPlayerOnline } from '../utils/helpers';
 import { ROLE_DEFINITIONS } from '../constants/gameData';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
+import { InfoModal } from '../components/ui/InfoModal';
 
-// 設定用タブの定義
+// 設定パネル用タブ定義
+// id: ロジック上の識別子
+// color/border/bg: 選択時のスタイリング用クラス
 const TABS = [
     { id: 'citizen', label: '市民陣営', icon: Shield, color: 'text-blue-400', border: 'border-blue-500/50', bg: 'bg-blue-900/20' },
     { id: 'werewolf', label: '人狼陣営', icon: Moon, color: 'text-red-400', border: 'border-red-500/50', bg: 'bg-red-900/20' },
@@ -15,7 +18,68 @@ const TABS = [
     { id: 'rules', label: 'ルール設定', icon: Settings, color: 'text-gray-300', border: 'border-gray-500/50', bg: 'bg-gray-800/40' },
 ];
 
+// コンポーネント: 待機ロビー画面
+// 役割: 参加者一覧表示、ゲーム設定変更、ゲーム開始トリガー
 export const LobbyScreen = ({ user, room, roomCode, players, setNotification, setView, setRoomCode }) => {
+      // ブラウザ互換性チェックステート
+      const [isBrowserSupported, setIsBrowserSupported] = useState(true);
+
+      // Effect: 推奨ブラウザ判定
+      // Opera等の一部ブラウザを除外し、Chrome/Safari/Edge/Firefoxを許可
+      useEffect(() => {
+          const checkBrowser = () => {
+              const ua = window.navigator.userAgent.toLowerCase();
+              let supported = false;
+
+              if (ua.includes('opr') || ua.includes('opera')) {
+                  supported = false;
+              } else if (ua.includes('firefox')) {
+                  supported = true;
+              } else if (ua.includes('edg')) {
+                  supported = true;
+              } else if (ua.includes('chrome')) {
+                  supported = true;
+              } else if (ua.includes('safari')) {
+                  supported = true;
+              }
+
+              setIsBrowserSupported(supported);
+          };
+          checkBrowser();
+      }, []);
+
+      // 非推奨ブラウザ時の警告表示
+      // ユーザー体験保護のためオーバーレイでブロック
+      if (!isBrowserSupported) {
+          return (
+              <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col items-center justify-center p-6 text-center text-white overflow-hidden font-sans">
+                  <div className="max-w-md w-full flex flex-col items-center gap-6 animate-fade-in-up">
+                      <div className="p-6 bg-red-900/20 rounded-full border border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+                          <Globe size={64} className="text-red-500" />
+                      </div>
+                      <h1 className="text-xl md:text-2xl font-black leading-tight">
+                          お使いのブラウザは<br/>推奨されていません
+                      </h1>
+                      <div className="bg-gray-900/80 border border-gray-700 p-6 rounded-2xl text-sm text-gray-300 leading-relaxed text-left shadow-xl w-full">
+                          <p className="mb-4">
+                              MANSUKE WEREWOLFを快適にプレイいただくため、以下のブラウザでのアクセスをお願いしています。
+                          </p>
+                          <ul className="space-y-2 font-bold text-white">
+                              <li className="flex items-center gap-2"><Check size={16} className="text-green-400"/> Google Chrome</li>
+                              <li className="flex items-center gap-2"><Check size={16} className="text-green-400"/> Safari</li>
+                              <li className="flex items-center gap-2"><Check size={16} className="text-green-400"/> Microsoft Edge</li>
+                              <li className="flex items-center gap-2"><Check size={16} className="text-green-400"/> Mozilla Firefox</li>
+                          </ul>
+                          <p className="mt-4 text-xs text-gray-500">
+                              ※これら以外のブラウザでは、正常に動作しない可能性があります。
+                          </p>
+                      </div>
+                  </div>
+              </div>
+          );
+      }
+
+      // データロード待機
       if (!room) return (
         <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-gray-900 via-black to-black opacity-80"></div>
@@ -27,22 +91,31 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
         </div>
       );
       
-      // 自分のプレイヤー情報を取得し、開発者フラグを確認
+      // 権限・ユーザー状態判定
       const myPlayer = players.find(p => p.id === user?.uid);
       const isDev = myPlayer?.isDev === true;
       const isHostUser = room.hostId === user?.uid;
-      const hasControl = isHostUser || isDev; // ホストまたは開発者がコントロール可能
+      const hasControl = isHostUser || isDev; // 設定変更やキック権限を持つか
 
+      // Memo: 開発者バッジ表示用フラグ
+      const hasDevPlayer = useMemo(() => players.some(p => p.isDev), [players]);
+
+      // ローカル設定ステート
+      // 初期値はサーバーデータから、変更時は即時ローカル反映＆サーバー同期
       const [roleSettings, setRoleSettings] = useState(room.roleSettings || {});
       const [anonymousVoting, setAnonymousVoting] = useState(room.anonymousVoting !== undefined ? room.anonymousVoting : true);
       const [inPersonMode, setInPersonMode] = useState(room.inPersonMode !== undefined ? room.inPersonMode : false);
-      const [discussionTime, setDiscussionTime] = useState(room.discussionTime !== undefined ? room.discussionTime : 240); // デフォルト240秒
+      const [discussionTime, setDiscussionTime] = useState(room.discussionTime !== undefined ? room.discussionTime : 240); 
       const [loading, setLoading] = useState(false);
-      const [activeTab, setActiveTab] = useState('citizen'); // 初期タブ
+      const [activeTab, setActiveTab] = useState('citizen'); 
       
+      // モーダル制御
       const [modalConfig, setModalConfig] = useState(null);
-      const [showCodeModal, setShowCodeModal] = useState(false); // ルームコード拡大表示用
+      const [showCodeModal, setShowCodeModal] = useState(false); 
+      const [showDevActionModal, setShowDevActionModal] = useState(false); 
 
+      // Effect: サーバーからの設定更新を同期
+      // 他のユーザーが設定を変更した場合の反映
       useEffect(() => {
           if (room) {
               setRoleSettings(room.roleSettings || {});
@@ -52,11 +125,18 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           }
       }, [room]);
 
+      // Memo: プレイヤー人数計算（観戦者除外）
       const validPlayers = useMemo(() => players.filter(p => !p.isSpectator), [players]);
       const validPlayerCount = validPlayers.length;
       
+      // 配役合計数計算
       const totalAssigned = Object.values(roleSettings).reduce((a,b) => a+b, 0);
 
+      // Memo: ゲーム開始条件バリデーション
+      // - 最低4人
+      // - 配役数合計と人数の一致
+      // - 人狼の存在確認
+      // - 人狼の過半数チェック（ゲーム即終了条件の回避）
       const validationError = useMemo(() => {
           if (validPlayerCount < 4) return "開始には最低4人のプレイヤーが必要です";
           if (totalAssigned !== validPlayerCount) return "配役の合計が人数と一致していません";
@@ -64,7 +144,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           let wolfCount = 0;
           let humanCount = 0;
           Object.entries(roleSettings).forEach(([r, c]) => { 
-              if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount += c; // 賢狼も人狼としてカウント
+              if (['werewolf', 'greatwolf', 'wise_wolf'].includes(r)) wolfCount += c; 
               else humanCount += c;
           });
           
@@ -74,6 +154,8 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           return null;
       }, [validPlayerCount, totalAssigned, roleSettings]);
 
+      // 関数: ゲーム開始処理 (Cloud Functions)
+      // 開始前に最新設定をFirestoreに保存
       const handleStartGame = async () => { 
           if(validationError) return setNotification({ message: validationError, type: "error" });
           setLoading(true); 
@@ -90,6 +172,8 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           finally { setLoading(false); } 
       };
 
+      // 関数: 部屋解散 (削除)
+      // Cloud Functions 'deleteRoom' を優先利用
       const confirmForceClose = () => {
           setModalConfig({
               title: "部屋の解散",
@@ -98,12 +182,11 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
               onConfirm: async () => {
                   setModalConfig(null);
                   try {
-                      // 確実に削除するためにFunctionを使用
                       const fn = httpsCallable(functions, 'deleteRoom');
                       await fn({ roomCode });
                   } catch (e) {
                       console.error(e);
-                      // 失敗した場合は従来通りupdateDocで試みる
+                      // fallback: ステータス変更のみ
                       await updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { status: 'closed' });
                   }
               },
@@ -111,6 +194,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           });
       };
 
+      // 関数: 退出処理 (プレイヤー削除)
       const confirmLeaveRoom = () => {
           setModalConfig({
               title: "部屋からの退出",
@@ -131,8 +215,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           });
       };
 
+      // 関数: プレイヤー追放 (Cloud Functions)
+      // ホストによる開発者追放は不可
       const confirmKickPlayer = (playerId, playerName, isTargetDev) => {
-          // ホストは開発者を追放できない（開発者はホストも追放可能）
           if (isHostUser && isTargetDev) {
               setNotification({ message: "開発者を追放することはできません", type: "error" });
               return;
@@ -146,7 +231,6 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
               onConfirm: async () => {
                   setModalConfig(null);
                   try {
-                      // 修正: deleteDocではなくCloud Functions経由でキックを実行
                       const fn = httpsCallable(functions, 'kickPlayer');
                       await fn({ roomCode, playerId });
                       setNotification({ message: `${playerName} さんを退出させました`, type: "success" });
@@ -158,6 +242,8 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           });
       };
 
+      // 関数群: 設定変更ハンドラ
+      // ステート更新とFirestore更新を並行実行
       const handleUpdateSettings = (key, val) => {
           const newSettings = {...roleSettings, [key]: val};
           setRoleSettings(newSettings);
@@ -179,13 +265,14 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { discussionTime: val });
       };
 
-      // 役職カテゴリー分け
+      // 定数: 役職グループ定義 (タブ表示用)
       const roleGroups = {
           citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder', 'assassin'],
           werewolf: ['werewolf', 'greatwolf', 'wise_wolf', 'madman'],
           third: ['fox', 'teruteru']
       };
 
+      // ローディング画面
       if (loading) return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white relative">
             <div className="absolute inset-0 bg-blue-900/10 animate-pulse"></div>
@@ -196,11 +283,33 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       );
 
       return (
-          // 修正: h-screen -> min-h-screen, overflow-hidden を削除し、overflow-x-hidden に変更
+          // レイアウト: 2カラム (左:情報 / 右:設定)
+          // SP対応: 横スクロール抑制 overflow-x-hidden
           <div className="min-h-screen w-full bg-gray-950 text-gray-100 font-sans relative overflow-x-hidden flex flex-col">
               {modalConfig && <ConfirmationModal {...modalConfig} />}
               
-              {/* ルームコード拡大表示モーダル */}
+              {/* モーダル: 開発者用アクションメニュー */}
+              {showDevActionModal && (
+                  <InfoModal title="開発者メニュー" onClose={() => setShowDevActionModal(false)}>
+                      <div className="flex flex-col gap-3 p-2">
+                          <p className="text-sm text-gray-400 mb-2">この部屋に対する操作を選択してください。</p>
+                          <button 
+                              onClick={() => { setShowDevActionModal(false); confirmForceClose(); }}
+                              className="w-full py-4 bg-red-900/50 border border-red-500 text-red-200 rounded-xl font-bold hover:bg-red-800 transition flex items-center justify-center gap-2"
+                          >
+                              <LogOut size={18}/> 部屋を解散する (全員強制退出)
+                          </button>
+                          <button 
+                              onClick={() => { setShowDevActionModal(false); confirmLeaveRoom(); }}
+                              className="w-full py-4 bg-gray-800 border border-gray-600 text-gray-300 rounded-xl font-bold hover:bg-gray-700 transition flex items-center justify-center gap-2"
+                          >
+                              <LogOut size={18}/> 部屋から退出する (自分のみ)
+                          </button>
+                      </div>
+                  </InfoModal>
+              )}
+
+              {/* モーダル: 部屋コード拡大表示 */}
               {showCodeModal && (
                   <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center animate-fade-in" onClick={() => setShowCodeModal(false)}>
                       <button className="absolute top-6 right-6 text-gray-400 hover:text-white transition"><X size={32}/></button>
@@ -212,20 +321,19 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                   </div>
               )}
               
-              {/* 背景エフェクト */}
+              {/* 背景装飾 */}
               <div className="fixed inset-0 z-0 pointer-events-none">
                   <div className="absolute -top-20 -right-20 w-[600px] h-[600px] bg-blue-900/10 rounded-full blur-[100px]"></div>
                   <div className="absolute -bottom-20 -left-20 w-[600px] h-[600px] bg-purple-900/10 rounded-full blur-[100px]"></div>
                   <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5"></div>
               </div>
 
-              {/* メインコンテンツ - 2カラムレイアウト (左: 部屋情報/プレイヤー, 右: 設定) */}
-              {/* 修正: lg:overflow-hidden を削除し、PCサイズでも高さが足りない場合はスクロールさせる */}
+              {/* メインエリア */}
               <div className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 min-h-0 overflow-y-auto">
                   
-                  {/* --- 左カラム: 部屋情報 & プレイヤーリスト --- */}
+                  {/* 左カラム: 部屋情報 / プレイヤーリスト */}
                   <div className="lg:col-span-4 flex flex-col gap-4 lg:h-full">
-                      {/* ルームコードカード */}
+                      {/* 上部カード: コード表示 & 退室ボタン */}
                       <div className="bg-gray-900/80 backdrop-blur-xl rounded-3xl p-6 shadow-xl border border-gray-700/50 shrink-0">
                           <div className="flex justify-between items-start mb-2">
                               <div>
@@ -236,22 +344,26 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                   </div>
                               </div>
                               {hasControl ? (
-                                  <button onClick={confirmForceClose} className="p-2 text-red-400 hover:bg-red-900/20 rounded-lg transition" title="部屋を解散"><LogOut size={18}/></button>
+                                  (isDev && !isHostUser) ? (
+                                      <button onClick={() => setShowDevActionModal(true)} className="p-2 text-indigo-400 hover:bg-indigo-900/20 rounded-lg transition" title="操作を選択"><Settings size={18}/></button>
+                                  ) : (
+                                      <button onClick={confirmForceClose} className="p-2 text-red-400 hover:bg-red-900/20 rounded-lg transition" title="部屋を解散"><LogOut size={18}/></button>
+                                  )
                               ) : (
                                   <button onClick={confirmLeaveRoom} className="p-2 text-gray-400 hover:bg-gray-800 rounded-lg transition" title="退出"><LogOut size={18}/></button>
                               )}
                           </div>
                           
-                          {/* ステータスカード - モダンデザイン */}
+                          {/* ステータスカウンター: 人数 / 配役数 */}
                           <div className="mt-4 grid grid-cols-2 gap-3">
-                              {/* 参加者カード */}
+                              {/* 参加人数 */}
                               <div className="bg-gray-800/40 border border-gray-700/50 rounded-2xl p-3 flex flex-col items-center relative overflow-hidden group">
                                   <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition"><Users size={40}/></div>
                                   <span className="text-xs text-gray-400 font-bold mb-1 flex items-center gap-1"><Users size={12}/> 参加者</span>
                                   <span className="text-3xl font-black text-white font-mono">{validPlayerCount}<span className="text-xs ml-1 text-gray-600 font-sans font-bold">名</span></span>
                               </div>
 
-                              {/* 配役カード */}
+                              {/* 配役数 (一致判定で色変化) */}
                               <div className={`border rounded-2xl p-3 flex flex-col items-center relative overflow-hidden group transition-all ${
                                   totalAssigned === validPlayerCount 
                                   ? "bg-green-900/20 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.1)]" 
@@ -274,8 +386,28 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                           </div>
                       </div>
 
-                      {/* プレイヤーリスト */}
-                      {/* スマホ時は高さを制限してスクロール可能に */}
+                      {/* Info: 開発者参加通知 */}
+                      {hasDevPlayer && (
+                          <div className="bg-indigo-900/30 border border-indigo-500/30 rounded-2xl p-4 flex flex-col gap-2 shrink-0 animate-fade-in shadow-lg">
+                              <div className="flex items-center gap-2">
+                                  <div className="bg-indigo-500/20 p-2 rounded-full">
+                                      <BadgeCheck size={20} className="text-indigo-400" />
+                                  </div>
+                                  <h3 className="font-bold text-indigo-100 text-sm md:text-base">開発者がこの部屋に参加しています！</h3>
+                              </div>
+                              <div className="pl-11">
+                                  <p className="text-xs text-indigo-200 leading-relaxed mb-2">
+                                      開発者バッジがついているプレイヤーは、MANSUKE WEREWOLFの開発に従事しました。
+                                  </p>
+                                  <ul className="list-disc list-outside text-[10px] md:text-xs text-indigo-300/80 space-y-1 ml-4">
+                                      <li>開発者も参加者の1人として、ゲームを通常通りプレイします。</li>
+                                      <li>ホストは、開発者を追放することはできません。</li>
+                                  </ul>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* プレイヤーリスト表示 */}
                       <div className="bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 flex flex-col lg:flex-1 min-h-[300px] lg:min-h-0 overflow-hidden shadow-xl">
                           <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/30">
                               <h3 className="font-bold text-gray-200 flex items-center gap-2"><Users size={18} className="text-blue-400"/> 参加者リスト</h3>
@@ -285,20 +417,20 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                               {players.map(p => (
                                   <div key={p.id} className="flex items-center justify-between bg-gray-800/30 hover:bg-gray-700/30 p-3 rounded-xl border border-transparent hover:border-gray-700 transition group">
                                       <div className="flex items-center gap-3 overflow-hidden">
+                                          {/* オンライン状態インジケータ */}
                                           <div className={`w-2 h-2 rounded-full shrink-0 ${isPlayerOnline(p) ? "bg-green-500 shadow-[0_0_8px_#22c55e]" : "bg-gray-600"}`}></div>
                                           <div className="flex flex-col min-w-0">
                                               <div className="flex items-center gap-2">
                                                   <span className={`font-bold text-sm truncate ${isPlayerOnline(p) ? "text-gray-200" : "text-gray-500"}`}>{p.name}</span>
-                                                  {p.isDev && <span className="text-[10px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30 flex items-center gap-0.5"><BadgeCheck size={10}/> 開発者</span>}
+                                                  {p.isDev && <span className="text-[10px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30 flex items-center gap-0.5 shrink-0"><BadgeCheck size={10}/> 開発者</span>}
                                               </div>
                                               {p.isSpectator && <span className="text-[9px] text-purple-400">観戦者</span>}
                                           </div>
                                       </div>
+                                      {/* アクション: ホストアイコン / 追放ボタン */}
                                       <div className="flex items-center gap-1">
                                           {room.hostId === p.id && <Crown size={14} className="text-yellow-500"/>}
                                           {hasControl && p.id !== user.uid && (
-                                              // ホストは開発者を追放できないチェックは confirmKickPlayer 内で行う
-                                              // UI上は開発者に対してもゴミ箱アイコンを表示しておく（ただしホストには無効であることを通知）
                                               <button onClick={() => confirmKickPlayer(p.id, p.name, p.isDev)} className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/20 rounded transition" title="追放">
                                                   <Trash2 size={14}/>
                                               </button>
@@ -310,10 +442,10 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                       </div>
                   </div>
 
-                  {/* --- 右カラム: 設定パネル --- */}
+                  {/* 右カラム: ゲーム設定パネル */}
                   <div className="lg:col-span-8 flex flex-col h-[600px] lg:h-full min-h-0 bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl overflow-hidden relative">
                       
-                      {/* タブヘッダー */}
+                      {/* 設定タブナビゲーション */}
                       <div className="flex items-center p-2 gap-2 overflow-x-auto custom-scrollbar border-b border-gray-800 bg-gray-950/50 shrink-0">
                           {TABS.map(tab => {
                               const isActive = activeTab === tab.id;
@@ -339,10 +471,10 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                           })}
                       </div>
 
-                      {/* コンテンツエリア */}
+                      {/* 設定コンテンツエリア */}
                       <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar relative">
                           
-                          {/* 陣営ごとの役職設定 */}
+                          {/* 役職設定 (市民・人狼・第三陣営) */}
                           {['citizen', 'werewolf', 'third'].includes(activeTab) && (
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 animate-fade-in">
                                   {roleGroups[activeTab].map(key => {
@@ -355,11 +487,12 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                               </div>
                                               <span className="text-sm font-bold text-gray-200 truncate shrink-0">{def.name}</span>
                                               
-                                              {/* 説明文エリアをflex-growで伸ばしてボタンを底に押しやる */}
+                                              {/* 役職説明 (flex-growでレイアウト調整) */}
                                               <p className="text-[10px] text-gray-500 leading-tight mt-1 mb-3 flex-grow whitespace-pre-wrap break-words">
                                                   {def.desc}
                                               </p>
                                               
+                                              {/* カウンター操作 */}
                                               <div className="mt-auto flex items-center justify-between bg-black/30 rounded-lg p-1 shrink-0">
                                                   {hasControl && <button onClick={() => handleUpdateSettings(key, Math.max(0, count - 1))} className="w-7 h-7 flex items-center justify-center rounded bg-gray-700/50 hover:bg-gray-600 text-gray-400 hover:text-white transition">-</button>}
                                                   <span className={`flex-1 text-center font-black text-lg ${count > 0 ? "text-white" : "text-gray-600"}`}>{count}</span>
@@ -392,7 +525,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                       </div>
                                   </div>
 
-                                  {/* 匿名投票モード */}
+                                  {/* 匿名投票モード切替 */}
                                   <div className="bg-gray-800/40 p-5 rounded-2xl border border-gray-700 hover:border-gray-600 transition flex items-center justify-between">
                                       <div className="pr-4">
                                           <h4 className="font-bold text-white flex items-center gap-2 text-sm md:text-base"><Settings size={18}/> 匿名投票モード</h4>
@@ -407,7 +540,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                       )}
                                   </div>
 
-                                  {/* 対面モード */}
+                                  {/* 対面モード切替 */}
                                   <div className="bg-gray-800/40 p-5 rounded-2xl border border-gray-700 hover:border-gray-600 transition flex items-center justify-between">
                                       <div className="pr-4">
                                           <h4 className="font-bold text-white flex items-center gap-2 text-sm md:text-base"><Mic size={18}/> 対面モード</h4>
@@ -434,7 +567,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                           )}
                       </div>
 
-                      {/* フッターアクションエリア */}
+                      {/* フッターアクション (ゲーム開始ボタン等) */}
                       <div className="p-4 border-t border-gray-800 bg-gray-900/50 backdrop-blur shrink-0">
                           {hasControl ? (
                               <div className="flex flex-col gap-2">

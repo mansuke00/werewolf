@@ -7,20 +7,22 @@ import { ROLE_DEFINITIONS } from '../../constants/gameData.js';
 export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, teammates, roomCode, roomData, lastActionResult, isDone }) => {
     if (!myPlayer) return null;
     
-    // データ整合性のための安全策
+    // players配列がundefinedの場合の対策
     const safePlayers = players || [];
 
-    // 暗殺者の使用済みチェック（Firestoreのsecret/roleDataに含まれる想定だが、簡易的にローカル判定またはサーバーレスポンスで処理）
-    // 本格的にはmyPlayerプロップスにsecret情報を含める必要があるが、ここではroomData経由かサーバーエラーで判断
+    // 暗殺者の使用済みチェックなどはここで行わない。サーバーサイドまたはroomDataで管理
     
-    // --- 受動的情報役職（名探偵・霊媒師） ---
-    // アクション選択は無く、情報を見るだけの役職
+    // 受動的役職（探偵・霊媒師）の処理ブロック
+    // ターゲット選択不要。結果を見るだけの役職
     if (['detective', 'medium'].includes(myRole)) {
+        // 結果が存在するか確認
         const hasResult = lastActionResult && lastActionResult.length > 0;
         
+        // 表示データの生成。結果がない場合はデフォルトメッセージ
         const displayCards = hasResult ? lastActionResult : [{ label: myRole === 'detective' ? "調査" : "霊媒", value: "今夜提供できる情報はありません", sub: "", isBad: false, icon: "Info" }];
 
-        // 情報を見たら自動的に「アクション完了」扱いにする
+        // 自動完了処理
+        // 結果表示後、または3秒後に自動的にアクション完了とする
         useEffect(() => {
              const timer = setTimeout(() => {
                  onActionComplete();
@@ -35,7 +37,6 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         return (
             <div className="flex flex-col h-full p-4 animate-fade-in items-center justify-center text-center bg-gray-900/80 rounded-xl ring-4 ring-purple-400/50">
                 <div className="flex flex-col items-center mb-4 gap-2">
-                     {/* ★修正: アニメーション(animate-bounce-slow)を削除 */}
                      <Search size={48} className="text-purple-400"/>
                      <h3 className="text-xl font-bold text-white">以下の情報をご確認ください</h3>
                 </div>
@@ -52,61 +53,72 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         );
     }
 
-    // --- 能動的アクション役職（人狼・占い師・騎士・ももすけなど） ---
+    // 能動的役職（人狼・占い師・騎士・暗殺者など）の処理ブロック
+    // ターゲット選択と送信が必要
     const [selectedId, setSelectedId] = useState(null);
     const [confirmed, setConfirmed] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [waitingResult, setWaitingResult] = useState(false);
     const [assassinUsedMsg, setAssassinUsedMsg] = useState(null);
 
-    // 人狼チーム、ももすけチームなどはチーム単位でキーを管理
+    // チームキー設定
+    // 人狼系は同一チーム、暗殺者は独自チームとして扱う
     let teamKey = myRole;
-    if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole)) teamKey = 'werewolf_team'; // 賢狼も人狼チームとして扱うよう修正
-    if (myRole === 'assassin') teamKey = 'assassin'; // ももすけもチーム行動（複数人の場合）
+    if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole)) teamKey = 'werewolf_team'; 
+    if (myRole === 'assassin') teamKey = 'assassin'; 
     
+    // 現在の進行中アクション、リーダーIDを取得
     const pendingAction = roomData?.pendingActions?.[teamKey];
     const leaderId = roomData?.nightLeaders?.[teamKey];
     
-    // 生存しているチームメイトを確認
+    // 生存しているチームメイトの抽出
     const livingTeammates = (teammates || []).filter(t => {
         const p = safePlayers.find(pl => pl.id === t.id);
         return p && p.status === 'alive';
     });
     
+    // ソロプレイ判定（チームメイトがいない場合）
     const isSolo = livingTeammates.length === 0;
 
-    // ソロ（占い師等）またはチームリーダーかどうか
+    // リーダー判定
+    // ソロなら自分がリーダー、そうでなければleaderIdと一致するか確認
     const isLeader = isSolo ? true : (leaderId ? leaderId === myPlayer.id : false); 
     
+    // 合意形成が必要か（ソロでなければ必要）
     const needsConsensus = !isSolo;
     const leaderName = safePlayers.find(p => p.id === leaderId)?.name || "---";
 
+    // 自分の視点でのリーダーID
     const myLeaderId = leaderId || myPlayer.id;
-    // 占い師・賢者は結果が返ってくるまで待機するモードがある
+    // 結果待ちが必要な役職（占い師・賢者）
     const hasResultWait = ['seer', 'sage'].includes(myRole);
+    // アクション完了済み判定
     const isActionDone = isDone || roomData?.nightActions?.[myLeaderId] !== undefined || (isSolo && roomData?.nightActions?.[myPlayer.id] !== undefined);
 
-    // ももすけが既に使用済みかどうかチェック
+    // 暗殺者の能力使用済みチェック
+    // roomDataのフラグを確認し、使用済みならメッセージを表示して完了扱いにする
     useEffect(() => {
         if (myRole === 'assassin') {
             const checkAssassinUsage = async () => {
-                // サーバーから情報をとるのが確実だが、ここではroomDataに含まれるフラグを確認する実装例
-                // ※Functions側で `room.assassinUsed` を更新する想定
                 if (roomData?.assassinUsed) {
                     setAssassinUsedMsg("ももすけは一名のみ存在意義を消すことができます");
-                    onActionComplete(); // アクション不要にする
+                    onActionComplete(); 
                 }
             };
             checkAssassinUsage();
         }
     }, [myRole, roomData, onActionComplete]);
 
-    // ステータス同期
+    // ステータス同期処理
+    // 承認状況のリセットや、アクション完了時のUI更新
     useEffect(() => {
+        // 提案がなくなれば確認状態を解除
         if (!pendingAction) setConfirmed(false);
 
+        // アクション完了時の処理
         if (isActionDone) {
              if (hasResultWait) {
+                 // 結果待ち役職の場合、結果が届いていれば完了、なければ待機中にする
                  if (lastActionResult && lastActionResult.length > 0) {
                      setConfirmed(true);
                      setWaitingResult(false);
@@ -115,19 +127,21 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                      setWaitingResult(true);
                  }
              } else {
+                 // 結果待ち不要なら即完了
                  setConfirmed(true);
                  onActionComplete();
              }
         }
     }, [pendingAction, confirmed, isLeader, livingTeammates.length, roomCode, onActionComplete, isActionDone, hasResultWait, lastActionResult]);
 
-    // チームリーダー：提案
+    // 提案処理（リーダー用）
+    // Functions: nightInteraction / type: propose
     const handlePropose = async () => { 
-        if((!selectedId && myRole !== 'assassin') || isSubmitting) return; // ももすけはスキップ可能なのでselectedIdなしでもOKな場合があるが、基本は選択
+        if((!selectedId && myRole !== 'assassin') || isSubmitting) return; 
         
-        // ももすけの「誰の存在意義も消さない」処理
+        // 暗殺者のスキップ処理対応
         if (myRole === 'assassin' && selectedId === 'skip') {
-             // スキップ処理
+             // スキップ時の特別な処理があればここに記述
         } else if (!selectedId) return;
 
         setIsSubmitting(true);
@@ -141,7 +155,9 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
     };
     
-    // チームメンバー：投票
+    // 投票処理（メンバー用）
+    // Functions: nightInteraction / type: vote
+    // approve: true(承認) / false(却下)
     const handleVote = async (approve) => { 
         if(isSubmitting) return;
         setIsSubmitting(true);
@@ -155,7 +171,8 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
     };
     
-    // ソロまたは最終決定
+    // 最終決定処理（ソロまたは単独行動用）
+    // Functions: submitNightAction
     const handleSubmitFinal = async () => { 
         if(isSubmitting) return;
         if (!selectedId && myRole !== 'assassin') return;
@@ -171,6 +188,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
             const fn = httpsCallable(functions, 'submitNightAction'); 
             await fn({ roomCode, targetId: finalTarget }); 
             
+            // 結果待ち不要なら即座に完了状態へ
             if (!hasResultWait) {
                 setConfirmed(true);
                 onActionComplete();
@@ -183,17 +201,19 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
     };
     
-    // 選択可能なターゲットのフィルタリング
+    // ターゲットリストのフィルタリング
     const targets = safePlayers.filter(p => {
+        // 死亡者、自分自身、仲間、前回護衛対象などを除外
         if (!p || p.status === 'dead') return false;
-        if (teammates && teammates.some(t => t.id === p.id)) return false; // 仲間は選べない
+        if (teammates && teammates.some(t => t.id === p.id)) return false; 
         if (['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) && p.id === myPlayer.id) return false;
         if (['seer', 'sage'].includes(myRole) && p.id === myPlayer.id) return false;
-        if (['knight', 'trapper'].includes(myRole) && myPlayer.lastTarget === p.id) return false; // 連続護衛不可
+        if (['knight', 'trapper'].includes(myRole) && myPlayer.lastTarget === p.id) return false; 
         if (myRole === 'assassin' && p.id === myPlayer.id) return false;
         return true;
     });
 
+    // 役職ごとのテキスト・アイコン設定
     let prompt = "対象を選択";
     let doneTitle = "アクション完了";
     let doneIcon = Check;
@@ -216,7 +236,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         doneIcon = Crosshair;
     }
 
-    // 使用済みの場合の表示
+    // 暗殺者使用済み画面の表示
     if (assassinUsedMsg) {
         return (
             <div className="flex flex-col h-full p-4 animate-fade-in items-center justify-center text-center bg-gray-900/80 rounded-xl border border-gray-700">
@@ -226,17 +246,19 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         );
     }
 
+    // 結果画面表示判定
     const showResultScreen = confirmed || (isActionDone && (!hasResultWait || (lastActionResult && lastActionResult.length > 0)));
 
-    // 結果表示画面
+    // 結果画面レンダリング
     if (showResultScreen) {
+        // アクションデータ取得（リーダーのアクションまたは自分のアクション）
         const actionData = roomData?.nightActions?.[myLeaderId] || roomData?.nightActions?.[myPlayer.id];
+        // ターゲット名解決
         const targetName = actionData ? (actionData.targetId === 'skip' ? "誰の存在意義も消さない" : safePlayers.find(p => p.id === actionData.targetId)?.name) : (selectedId ? (selectedId==='skip'?"誰の存在意義も消さない":safePlayers.find(p=>p.id===selectedId)?.name) : "---");
         const resultCards = lastActionResult || [];
         
         return (
             <div className="flex flex-col h-full p-4 animate-fade-in items-center justify-center text-center bg-gray-900/80 rounded-xl ring-4 ring-yellow-400/50">
-                {/* ★修正: アニメーション(animate-bounce-slow)を削除 */}
                 <div className="bg-white/10 p-4 rounded-full mb-4">
                      {React.createElement(doneIcon, { size: 48, className: "text-yellow-400" })}
                 </div>
@@ -252,6 +274,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                             "護衛しました"
                          }
                      </p>
+                     {/* 占い結果などの詳細表示 */}
                      {resultCards.length > 0 && (
                          <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
                              {resultCards.map((card, idx) => (
@@ -267,6 +290,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         );
     }
 
+    // 結果待ち画面（サーバー応答待ち）
     if (waitingResult) {
         return (
             <div className="flex flex-col h-full p-4 animate-fade-in items-center justify-center text-center bg-gray-900/80 rounded-xl border border-purple-500/50">
@@ -277,8 +301,9 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         );
     }
 
-    // チーム行動の待機・投票画面
+    // チーム行動用画面（リーダー選出・提案・投票）
     if (needsConsensus) {
+        // リーダー未定時
         if (!leaderId) {
              return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/30 items-center justify-center text-center">
@@ -289,6 +314,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
              );
         }
 
+        // 提案待ち（メンバー視点）
         if (!pendingAction && !isLeader) {
             return (
                 <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl border border-purple-500/30 justify-center">
@@ -309,6 +335,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
             );
         }
 
+        // 承認待ち（リーダー視点）
         if (pendingAction && isLeader) {
             const targetName = pendingAction.targetId === 'skip' ? "誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             return (
@@ -330,6 +357,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
             );
         }
 
+        // 承認投票画面（メンバー視点）
         if (pendingAction && !isLeader) {
             const targetName = pendingAction.targetId === 'skip' ? "誰の存在意義も消さない" : (safePlayers.find(p=>p.id===pendingAction.targetId)?.name || "不明");
             const hasVoted = pendingAction.approvals?.includes(myPlayer.id);
@@ -357,9 +385,10 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
         }
     }
 
-    // ターゲット選択画面
+    // ターゲット選択画面（メイン）
     return (
         <div className="flex flex-col h-full p-4 animate-fade-in bg-gray-900/80 rounded-xl ring-4 ring-purple-500/30">
+            {/* リーダー時の案内表示 */}
             {needsConsensus && (
                 <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-xl p-3 mb-4 flex items-start gap-3 shrink-0">
                     <div className="bg-yellow-500/20 p-2 rounded-full shrink-0">
@@ -385,6 +414,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                         ももすけは1ゲームにつき1人しか存在意義を抹消することができません。注意して能力を活用してください。
                     </p>
                 )}
+                {/* 連続護衛禁止の警告 */}
                 {['knight', 'trapper'].includes(myRole) && myPlayer.lastTarget && (
                     <p className="text-xs text-red-400 bg-red-900/20 px-2 py-1 rounded border border-red-500/30 mt-2">
                         ※前回護衛したプレイヤー ({safePlayers.find(p => p.id === myPlayer.lastTarget)?.name}) は選択できません。
@@ -393,6 +423,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
             </div>
 
             <div className="grid grid-cols-2 gap-2 overflow-y-auto flex-1 custom-scrollbar min-h-0">
+                {/* 暗殺者用スキップボタン */}
                 {myRole === 'assassin' && (
                     <button 
                         onClick={() => setSelectedId('skip')} 
@@ -406,6 +437,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                     </button>
                 )}
                 
+                {/* ターゲットボタン生成 */}
                 {targets.length === 0 ? (
                     <div className="col-span-2 text-center text-gray-500 py-10">
                         <p className="text-sm">選択可能な対象がいません</p>
@@ -427,6 +459,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                 )}
             </div>
             
+            {/* 決定/承認へ進むボタン */}
             <button 
                 onClick={needsConsensus ? handlePropose : handleSubmitFinal} 
                 disabled={!selectedId || isSubmitting} 

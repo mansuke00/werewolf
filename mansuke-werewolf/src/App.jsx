@@ -13,66 +13,58 @@ import { db, auth } from './config/firebase.js';
 import { HEARTBEAT_INTERVAL_MS } from './constants/gameData.js';
 import { Loader, AlertTriangle, LogIn, XCircle, Home, MonitorX, ExternalLink, Copy, Check } from 'lucide-react';
 
+// アプリケーションルートコンポーネント
+// 全体的な状態管理、ルーティング（画面切替）、Firebase初期化、セッション管理を担当
 export default function App() {
+  // ステート: 認証・ユーザー
   const [user, setUser] = useState(null);
+  
+  // ステート: 画面遷移管理 ('home' | 'lobby' | 'game' | 'result' | 'logs')
   const [view, setView] = useState('home');
+  
+  // ステート: ゲームデータ
   const [roomCode, setRoomCode] = useState("");
   const [room, setRoom] = useState(null);
   const [players, setPlayers] = useState([]);
   const [myPlayer, setMyPlayer] = useState(null);
+  
+  // ステート: システム・UI
   const [notification, setNotification] = useState(null);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
 
-  // 復帰機能用の状態
+  // ステート: セッション復帰機能
   const [restoreRoomId, setRestoreRoomId] = useState(null);
-  const [isRestoring, setIsRestoring] = useState(true); // 初期ロード中はtrue
+  const [isRestoring, setIsRestoring] = useState(true); // 初期ロードフラグ
   const [showRestoreModal, setShowRestoreModal] = useState(false);
 
-  // 画面サイズ・向きの監視
-  const [isMobileView, setIsMobileView] = useState(false);
-  // アプリ内ブラウザの監視
-  const [isInAppBrowser, setIsInAppBrowser] = useState(false);
-  // URLコピー済みフラグ
+  // ステート: 環境判定
+  const [isMobileView, setIsMobileView] = useState(false); // スマホ/縦画面判定
+  const [isInAppBrowser, setIsInAppBrowser] = useState(false); // アプリ内ブラウザ判定
   const [isUrlCopied, setIsUrlCopied] = useState(false);
 
+  // Effect: 画面サイズ・閲覧環境チェック
+  // スマホやアプリ内ブラウザでの閲覧を制限するための判定ロジック
   useEffect(() => {
     const checkScreen = () => {
-      const isSmall = window.innerWidth < 768; // スマホ想定
-      const isPortrait = window.innerHeight > window.innerWidth;
-      // 小さい画面または縦画面のいずれかであればブロック
+      const isSmall = window.innerWidth < 768; // 幅768px未満
+      const isPortrait = window.innerHeight > window.innerWidth; // 縦長
+      // どちらかに該当すればモバイルビューとみなす
       setIsMobileView(isSmall || isPortrait);
     };
 
-    // アプリ内ブラウザ検知（強化版）
+    // アプリ内ブラウザ判定 (UA文字列チェック)
     const checkInAppBrowser = () => {
         const ua = window.navigator.userAgent.toLowerCase();
         
-        // 検知したいキーワードリスト（全て小文字で記述）
+        // 判定対象キーワード
         const inAppKeywords = [
-            'slack',      // Slack
-            'line',       // LINE
-            'instagram',  // Instagram
-            'fban',       // Facebook (Android)
-            'fbav',       // Facebook (iOS)
-            'fb_iab',     // Facebook (In-App Browser)
-            'twitter',    // Twitter
-            'micromessenger', // WeChat
-            'tiktok',     // TikTok
-            'pinterest',  // Pinterest
-            'snapchat',   // Snapchat
-            'yjapp',      // Yahoo! JAPAN アプリ
-            'yjm',        // Yahoo! JAPAN モバイル
-            'googlesearchapp', // Google検索アプリ
-            'wv'          // Android WebView (一般的な識別子)
+            'slack', 'line', 'instagram', 'fban', 'fbav', 'fb_iab', 
+            'twitter', 'micromessenger', 'tiktok', 'pinterest', 
+            'snapchat', 'yjapp', 'yjm', 'googlesearchapp', 'wv'
         ];
 
-        // キーワード判定
         const isBlacklisted = inAppKeywords.some(keyword => ua.includes(keyword));
-        
         setIsInAppBrowser(isBlacklisted);
-        
-        // デバッグ用: もし開発者コンソールが見れる場合はUAを確認できます
-        // console.log("User Agent:", ua, "Is In-App:", isBlacklisted);
     };
 
     checkScreen();
@@ -81,10 +73,13 @@ export default function App() {
     return () => window.removeEventListener('resize', checkScreen);
   }, []);
 
-  // 1. 初期化・認証・状態復元チェック
+  // Effect: 初期化・認証・セッション復元チェック
+  // アプリ起動時に一度だけ実行
   useEffect(() => {
+    // 認証初期化処理
     const initAuth = async () => {
       try {
+        // カスタムトークンがあれば優先使用、なければ匿名認証
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
@@ -92,28 +87,31 @@ export default function App() {
         }
       } catch (error) {
         console.error("Auth Error:", error);
-        setIsRestoring(false);
+        setIsRestoring(false); // エラー時もロード解除
       }
     };
     initAuth();
 
+    // 認証状態監視 & 復帰ロジック
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
       if (currentUser) {
+        // ローカルストレージから前回の部屋コード取得
         const savedRoomCode = localStorage.getItem('mansuke_last_room');
-        // 保存された部屋コードがあり、まだ部屋に入っていない場合
+        
+        // 未入室かつ保存コードありの場合、復帰可能性をチェック
         if (savedRoomCode && !roomCode) {
            try {
-               // ★ここではデータが存在するかだけの確認に留め、自動復帰はしない
+               // プレイヤーデータが存在し、かつ追放(vanished)されていないか確認
                const playerRef = doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', savedRoomCode, 'players', currentUser.uid);
                const playerSnap = await getDoc(playerRef);
                
                if (playerSnap.exists() && playerSnap.data().status !== 'vanished') {
                    setRestoreRoomId(savedRoomCode);
-                   setShowRestoreModal(true); // モーダルを表示
+                   setShowRestoreModal(true); // 復帰確認モーダル表示
                } else {
-                   localStorage.removeItem('mansuke_last_room');
+                   localStorage.removeItem('mansuke_last_room'); // 無効なデータは削除
                }
            } catch (e) {
                console.error("Session check failed:", e);
@@ -121,22 +119,24 @@ export default function App() {
            }
         }
       }
-      setIsRestoring(false); // 認証とチェック完了
+      setIsRestoring(false); // 初期チェック完了
     });
     return () => unsubscribe();
   }, []); 
 
-  // 2. 部屋コードの永続化管理（roomCodeが変更された時のみ実行）
+  // Effect: 部屋コード永続化管理
+  // 入室時に保存、退室時に削除
   useEffect(() => {
       if (roomCode) {
           localStorage.setItem('mansuke_last_room', roomCode);
       } else if (!isRestoring && !showRestoreModal) {
-          // 復元処理中やモーダル表示中でないのにroomCodeが空なら、意図的な退出とみなす
+          // 意図的な退室（復元処理中でない）ならストレージクリア
           localStorage.removeItem('mansuke_last_room');
       }
   }, [roomCode, isRestoring, showRestoreModal]);
 
-  // 3. メンテナンスモード監視
+  // Effect: メンテナンスモード監視
+  // Firestoreのsystem/settingsを監視
   useEffect(() => {
       if (!user) return;
       const unsub = onSnapshot(doc(db, 'system', 'settings'), (doc) => {
@@ -145,9 +145,10 @@ export default function App() {
       return () => unsub();
   }, [user]);
 
-  // 4. 部屋・プレイヤー監視と画面遷移制御
+  // Effect: メインゲームループ監視 (部屋・プレイヤー情報)
+  // roomCodeがセットされた時点で起動し、リアルタイム更新と画面遷移を制御
   useEffect(() => {
-    // ★重要: ユーザー認証済みかつ、部屋コードがセットされている場合のみリスナーを開始する
+    // 未認証または未入室ならリセットして終了
     if (!user || !roomCode) {
         setRoom(null);
         setPlayers([]);
@@ -157,12 +158,13 @@ export default function App() {
 
     const roomRef = doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode);
 
+    // 部屋情報監視リスナー
     const roomUnsub = onSnapshot(roomRef, (docSnap) => {
       if (docSnap.exists()) {
         const rData = { id: docSnap.id, ...docSnap.data() };
         setRoom(rData);
         
-        // 解散（closed）の検知：即座にホームへ
+        // 解散検知: status='closed'なら強制ホーム遷移
         if (rData.status === 'closed') {
             setRoomCode("");
             setView('home');
@@ -170,34 +172,39 @@ export default function App() {
             return;
         }
         
-        // 画面遷移ロジック
+        // 自動画面遷移ロジック
+        // 現在の画面(view)と部屋のステータス(rData.status)に応じて遷移先を決定
         if (view === 'home') {
+            // ホームからの遷移（復帰時など）
             if (rData.status === 'waiting') setView('lobby');
             else if (rData.status === 'playing') setView('game');
             else if (rData.status === 'finished' || rData.status === 'aborted') setView('result');
         } else if (view === 'lobby' && rData.status === 'playing') {
+            // ロビー -> ゲーム開始
             setView('game');
         } else if (view === 'game' && (rData.status === 'finished' || rData.status === 'aborted')) {
+            // ゲーム中 -> 終了/中断
             setView('result');
         } else if (view === 'result' && rData.status === 'waiting') {
-            // リザルト画面で部屋がwaitingに戻ったらロビーへ遷移（再戦時）
+            // 結果画面 -> 再戦（ロビーへ）
             setView('lobby');
         }
 
       } else {
-        // ドキュメント自体が消えた（削除された）場合
+        // ドキュメント消失時の処理
         setRoomCode("");
         setView('home');
         setNotification({ message: "部屋が見つかりません（解散された可能性があります）", type: "info" });
       }
     }, (error) => {
         console.warn("Room sync warning:", error.message);
-        // 権限エラー等で読めなくなった場合もホームへ
+        // エラー時は安全のためホームへ
         setRoomCode("");
         setView('home');
         setNotification({ message: "部屋への接続が切れました", type: "error" });
     });
 
+    // プレイヤーリスト監視リスナー
     const q = query(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'players'));
     const playersUnsub = onSnapshot(q, (snapshot) => {
       const pList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -206,13 +213,14 @@ export default function App() {
       const me = pList.find(p => p.id === user.uid);
       if (me) {
           setMyPlayer(me);
+          // 追放検知
           if (me.status === 'vanished') {
               setRoomCode("");
               setView('home');
               setNotification({ message: "部屋から退出しました", type: "info" });
           }
       } else if (pList.length > 0) {
-          // データ取得ができているのに自分がいない＝削除された/追い出された
+          // リストはあるのに自分がいない場合（削除された）
           setRoomCode("");
           setView('home');
       }
@@ -223,7 +231,8 @@ export default function App() {
     return () => { roomUnsub(); playersUnsub(); };
   }, [user, roomCode, view]);
 
-  // 5. 生存確認（ハートビート）
+  // Effect: 生存確認 (Heartbeat)
+  // 定期的にlastSeenを更新し、オフライン判定を防ぐ
   useEffect(() => {
       if (!user || !roomCode) return;
       
@@ -236,22 +245,24 @@ export default function App() {
       return () => clearInterval(interval);
   }, [user, roomCode]);
 
-  // 復帰処理のハンドラー
+  // ハンドラ: 復帰モーダル「再参加」
   const handleConfirmRestore = () => {
       if (restoreRoomId) {
-          setRoomCode(restoreRoomId); // これによりuseEffectが発火し、リスナー登録→画面遷移が行われる
+          setRoomCode(restoreRoomId); // roomCode更新によりメイン監視Effectが発火
           setRestoreRoomId(null);
           setShowRestoreModal(false);
           setNotification({ message: "セッションを復元しました", type: "success" });
       }
   };
 
+  // ハンドラ: 復帰モーダル「キャンセル」
   const handleCancelRestore = () => {
       localStorage.removeItem('mansuke_last_room');
       setRestoreRoomId(null);
       setShowRestoreModal(false);
   };
 
+  // ハンドラ: URLコピー
   const handleCopyUrl = () => {
       const url = window.location.href;
       navigator.clipboard.writeText(url).then(() => {
@@ -260,7 +271,7 @@ export default function App() {
       });
   };
 
-  // アプリ内ブラウザ警告（最優先表示）
+  // 表示分岐: アプリ内ブラウザ警告 (最優先)
   if (isInAppBrowser) {
       return (
           <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col items-center justify-center p-6 text-center text-white overflow-hidden font-sans">
@@ -296,7 +307,7 @@ export default function App() {
       );
   }
 
-  // 画面サイズ警告（アプリ内ブラウザでない場合のみ表示）
+  // 表示分岐: 画面サイズ警告 (PC/タブレット推奨)
   if (isMobileView) {
       return (
           <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col items-center justify-center p-6 text-center text-white overflow-hidden">
@@ -323,7 +334,7 @@ export default function App() {
       );
   }
 
-  // ローディング画面（初期認証中）
+  // 表示分岐: 初期ロード中
   if (isRestoring) {
       return (
           <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center text-white">
@@ -333,13 +344,13 @@ export default function App() {
       );
   }
 
+  // 表示分岐: メインアプリケーション
   return (
     <>
-      {/* 通知データが存在する場合のみ表示（空の通知枠が出ないようにする） */}
+      {/* グローバル通知 */}
       {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
       
-      {/* 復帰確認モーダル（独自リッチデザイン） */}
-      {/* レスポンシブ調整: モーダルの幅やマージンを調整 */}
+      {/* 復帰確認モーダル */}
       {showRestoreModal && (
           <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[999] flex items-center justify-center p-4 animate-fade-in">
               <div className="bg-gray-900 border-2 border-blue-500/50 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-[0_0_50px_rgba(59,130,246,0.3)] relative text-center">
@@ -371,6 +382,7 @@ export default function App() {
           </div>
       )}
 
+      {/* 画面ルーティング */}
       {view === 'home' && <HomeScreen user={user} setRoomCode={setRoomCode} setView={setView} setNotification={setNotification} setMyPlayer={setMyPlayer} maintenanceMode={maintenanceMode} />}
       {view === 'logs' && <LogViewerScreen setView={setView} />}
       {view === 'lobby' && <LobbyScreen user={user} room={room} roomCode={roomCode} players={players} setNotification={setNotification} setView={setView} setRoomCode={setRoomCode} />}

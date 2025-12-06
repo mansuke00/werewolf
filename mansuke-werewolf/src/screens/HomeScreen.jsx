@@ -5,33 +5,43 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
 import { getMillis } from '../utils/helpers.js';
 
+// コンポーネント: ホーム画面
+// 役割: 部屋作成、参加、観戦、管理者機能、メンテナンス表示
 export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyPlayer, maintenanceMode }) => {
-    // 画面遷移: initial, spectateRoomList, nickname, adminMenu, maintenance
+    // ステート: 画面遷移管理
+    // initial: 初期画面
+    // spectateRoomList: 途中参加（観戦）可能な部屋リスト
+    // nickname: 名前入力画面
+    // adminMenu: 管理者メニュー
+    // maintenance: メンテナンス画面
     const [homeStep, setHomeStep] = useState('initial');
-    const [homeMode, setHomeMode] = useState(null); // create, join, spectate
     
-    // 管理者関連
+    // ステート: アクションモード (create: 作成, join: 参加, spectate: 観戦)
+    const [homeMode, setHomeMode] = useState(null); 
+    
+    // ステート: 管理者機能関連
     const [showAdminAuth, setShowAdminAuth] = useState(false);
     const [adminPassInput, setAdminPassInput] = useState("");
     const [adminPass, setAdminPass] = useState(null); 
     const [isAdmin, setIsAdmin] = useState(false);
     
-    // 隠しコマンド用（長押し判定）
+    // Ref: 隠しコマンド用タイマー（長押し判定用）
     const longPressTimerRef = useRef(null);
     
-    // データ関連
+    // ステート: 入力データ・部屋リスト
     const [nickname, setNickname] = useState("");
     const [roomCodeInput, setRoomCodeInput] = useState("");
     const [availableRooms, setAvailableRooms] = useState([]);
     
-    // モーダル・ローディング
+    // ステート: モーダル・ローディング制御
     const [showManualInputModal, setShowManualInputModal] = useState(false);
-    const [showSpectatorConfirmModal, setShowSpectatorConfirmModal] = useState(false); // 観戦参加確認モーダル
+    const [showSpectatorConfirmModal, setShowSpectatorConfirmModal] = useState(false); // 観戦参加確認
     const [isValidatingRoom, setIsValidatingRoom] = useState(false);
 
-    // 管理者パスワードの取得
+    // Effect: 管理者パスワード取得
+    // Firestore 'system/settings' から取得
+    // 依存配列に user を追加し、ログイン完了後に実行されるよう制御
     useEffect(() => {
-        // ★修正: ユーザー認証が完了するまで処理を待機する
         if (!user) return;
 
         const fetchAdminPassword = async () => {
@@ -46,9 +56,11 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             }
         };
         fetchAdminPassword();
-    }, [user]); // ★修正: userを依存配列に追加し、ログイン完了時に再実行させる
+    }, [user]);
 
-    // メンテナンスモードの切り替え検知
+    // Effect: メンテナンスモード監視
+    // 管理者以外は強制的にメンテナンス画面へ遷移
+    // 管理者はメンテナンス中も操作可能
     useEffect(() => {
         if (maintenanceMode && !isAdmin && homeStep !== 'maintenance') {
             setHomeStep('maintenance');
@@ -57,7 +69,10 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         }
     }, [maintenanceMode, isAdmin, homeStep]);
 
-    // 部屋リストのリアルタイム監視
+    // Effect: 部屋リストリアルタイム監視
+    // 用途に応じてフィルタリング
+    // - 途中参加(spectateRoomList): status='playing'
+    // - 通常参加(その他): status='waiting'
     useEffect(() => {
         if (!user) return;
 
@@ -67,14 +82,14 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             
             let filteredRooms = [];
             if (homeStep === 'spectateRoomList') {
-                // 途中参加：進行中のみ（終了、中断は除外）
+                // 進行中の部屋のみ抽出（終了・中断は除外）
                 filteredRooms = allRooms.filter(room => room.status === 'playing');
             } else {
-                // 通常参加：待機中のみ
+                // 待機中の部屋のみ抽出
                 filteredRooms = allRooms.filter(room => room.status === 'waiting');
             }
             
-            // 新しい順にソート
+            // 作成日時降順ソート
             filteredRooms.sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
             setAvailableRooms(filteredRooms);
         }, (error) => {
@@ -83,6 +98,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         return () => unsubscribe();
     }, [homeStep, user]);
 
+    // 関数: 管理者パスワード検証
+    // adminPass未取得時は警告
     const validateAdminPass = (pass) => { 
         if (adminPass === null) {
             setNotification({ message: "設定を読み込み中です...", type: "warning" });
@@ -98,6 +115,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         } 
     };
 
+    // 関数: メンテナンスモード切り替え (Cloud Functions)
     const handleToggleMaintenance = async () => {
         try {
             const fn = httpsCallable(functions, 'toggleMaintenance');
@@ -108,6 +126,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         }
     };
 
+    // 関数: 部屋コード検証
+    // 入力されたコードの部屋が存在するか、参加可能かチェック
     const handleCheckRoom = async () => {
         if (roomCodeInput.length !== 4) return;
         setIsValidatingRoom(true);
@@ -120,16 +140,16 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 const roomData = roomSnap.data();
                 
                 if (roomData.status === 'waiting') {
-                    // 待機中はどちらでも参加可能
+                    // 待機中 -> 参加フローへ
                     setShowManualInputModal(false);
                     setHomeStep('nickname');
                     setHomeMode('join');
                 } else if (roomData.status === 'playing') {
-                    // 進行中なら、ニックネーム入力前に観戦確認モーダルを出す
+                    // 進行中 -> 観戦確認モーダル表示
                     setShowManualInputModal(false);
                     setShowSpectatorConfirmModal(true);
                 } else {
-                    // 終了済み、中断、解散済みの場合
+                    // 終了/中断 -> エラー
                     setNotification({ message: "部屋が見つかりません", type: "error" });
                 }
             } else {
@@ -143,22 +163,23 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         }
     };
 
-    // 観戦モードへの切り替えを承認した場合
+    // 関数: 観戦モード参加確定
     const confirmJoinSpectator = () => {
         setShowSpectatorConfirmModal(false);
         setHomeStep('nickname');
         setHomeMode('spectate');
     };
 
-    // 隠しコマンド処理（長押し開始）
+    // 関数: 隠しコマンド (長押し開始)
+    // タイトルロゴ等を2秒長押しで管理者認証表示
     const handlePressStart = () => {
         longPressTimerRef.current = setTimeout(() => {
             setShowAdminAuth(true);
-            if (navigator.vibrate) navigator.vibrate(50);
-        }, 2000); // 2秒
+            if (navigator.vibrate) navigator.vibrate(50); // バイブレーションフィードバック
+        }, 2000); 
     };
 
-    // 隠しコマンド処理（長押し中断）
+    // 関数: 隠しコマンド (長押し中断)
     const handlePressEnd = () => {
         if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
@@ -166,13 +187,17 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         }
     };
 
-    // 部屋作成
+    // 関数: 部屋作成処理
+    // isDev: 管理者メニューからの作成時true
     const handleCreateRoom = async (isDev = false) => { 
         if(!nickname) return setNotification({ message: "名前を入力", type: "error" }); 
         try { 
+            // 部屋コード生成 (1000-9999)
             const code = Math.floor(1000+Math.random()*9000).toString(); 
+            // 初期設定値
             const defaultSettings = { citizen: 1, werewolf: 1, seer: 1, medium: 0, knight: 1, trapper: 0, sage: 0, killer: 0, detective: 0, cursed: 0, elder: 0, greatwolf: 0, madman: 0, fox: 0, assassin: 0, teruteru: 0 };
             
+            // 部屋ドキュメント作成
             await setDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', code), { 
                 hostId: user.uid, hostName: nickname, status: 'waiting', phase: 'lobby', roleSettings: defaultSettings, createdAt: serverTimestamp(), logs: [], anonymousVoting: true, inPersonMode: false 
             }); 
@@ -180,20 +205,22 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
             const playerData = { 
                 name: nickname, status: 'alive', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() 
             };
-            // 開発者フラグ（管理者メニューから作成時のみ）
             if (isDev) playerData.isDev = true;
 
+            // ホストプレイヤー作成
             await setDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', code, 'players', user.uid), playerData); 
             setRoomCode(code); 
             setView('lobby'); 
         } catch(e){ setNotification({ message: "エラー", type: "error" }); } 
     };
 
-    // 参加（プレイヤー or 観戦者）
+    // 関数: 部屋参加処理
+    // 観戦参加の場合はCloud Functions経由
     const handleJoinRoom = async (codeToJoin = roomCodeInput, isDev = false) => { 
         if(!nickname || codeToJoin.length!==4) return setNotification({ message: "入力エラー", type: "error" }); 
         
         try { 
+            // 観戦モード処理
             if (homeMode === 'spectate') {
                 const joinSpectatorFn = httpsCallable(functions, 'joinSpectator');
                 await joinSpectatorFn({ roomCode: codeToJoin, nickname: nickname, isDev });
@@ -202,7 +229,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 return;
             }
 
-            // 通常参加
+            // 通常参加: 同名チェック
             const playersRef = collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', codeToJoin, 'players');
             const playersSnap = await getDocs(playersRef);
             if (playersSnap.docs.some(doc => doc.data().name === nickname)) {
@@ -217,9 +244,9 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 lastSeen: serverTimestamp(),
                 isSpectator: false
             };
-            // 開発者フラグ（管理者メニューから参加時のみ）
             if (isDev) playerData.isDev = true;
 
+            // プレイヤー追加
             await setDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', codeToJoin, 'players', user.uid), playerData); 
             setRoomCode(codeToJoin);
             setView('lobby'); 
@@ -229,11 +256,12 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         } 
     };
 
+    // 関数: 部屋リストからの選択処理
+    // 選択された部屋IDをセットし検証へ
     const handleRoomSelect = (roomId) => {
         setRoomCodeInput(roomId);
-        // リスト選択時もバリデーションと確認を挟む（setRoomCodeInputした上でhandleCheckRoomを呼ぶのと同義の処理）
         setIsValidatingRoom(true);
-        // リストデータからステータスを取得（通信節約）
+        // リスト上の情報を使って簡易チェック（通信削減）
         const targetRoom = availableRooms.find(r => r.id === roomId);
         
         if (targetRoom) {
@@ -242,7 +270,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 setHomeMode('join');
                 setIsValidatingRoom(false);
             } else if (targetRoom.status === 'playing') {
-                // 途中参加リストから選んだ場合も確認を出す
+                // 進行中 -> 観戦確認へ
                 setShowSpectatorConfirmModal(true);
                 setIsValidatingRoom(false);
             } else {
@@ -250,15 +278,16 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 setIsValidatingRoom(false);
             }
         } else {
-            // リスト更新のラグで消えている場合などは念のためサーバー確認
+            // リスト情報のラグ対策でサーバー確認
             handleCheckRoom(); 
         }
     };
 
-    // メンテナンス画面
+    // レンダリング: メンテナンス画面
     if (homeStep === 'maintenance' && !isAdmin) {
         return (
             <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 md:p-6 relative overflow-hidden font-sans">
+                {/* 背景エフェクト */}
                 <div className="absolute inset-0 z-0">
                     <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-amber-900/20 via-black to-black animate-pulse-slow"></div>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[1px] bg-amber-500/50 blur-sm"></div>
@@ -266,9 +295,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 </div>
                 
                 <div className="relative z-10 text-center max-w-2xl px-4">
-                    {/* アニメーション削除: animate-bounce-slow を削除 */}
                     <Construction size={60} className="text-amber-500 mx-auto mb-6 md:w-20 md:h-20 md:mb-8"/>
-                    {/* 長押しトリガー対象 */}
+                    {/* タイトル (長押しで管理者認証トリガー) */}
                     <h1 
                         className="text-4xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-700 mb-6 tracking-tight select-none cursor-default active:scale-95 transition-transform"
                         onMouseDown={handlePressStart}
@@ -290,6 +318,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     </div>
                 </div>
 
+                {/* メンテナンス画面用 管理者認証モーダル */}
                 {showAdminAuth && (
                     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
                         <div className="bg-gray-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
@@ -308,8 +337,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
     return (
         <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-y-auto pb-40">
-            {/* 画面右上の丸い要素を削除しました */}
             
+            {/* 手動コード入力モーダル */}
             {showManualInputModal && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-gray-900 border border-gray-700 rounded-3xl p-6 w-full max-w-md shadow-2xl relative">
@@ -335,7 +364,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 </div>
             )}
 
-            {/* 観戦参加確認モーダル（独自デザイン） */}
+            {/* 観戦参加確認モーダル */}
             {showSpectatorConfirmModal && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-gray-900 border border-purple-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative text-center">
@@ -357,7 +386,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 </div>
             )}
 
-            {/* 管理者認証モーダル */}
+            {/* 管理者認証モーダル (通常画面用) */}
             {showAdminAuth && !isAdmin && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-gray-900 border border-purple-500/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
@@ -371,9 +400,11 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                 </div>
             )}
 
+            {/* メインレイアウト */}
             <div className="z-10 w-full max-w-5xl px-2 h-full flex flex-col justify-center min-h-[500px]">
+                {/* ヘッダー・タイトルロゴ */}
                 <div className="text-center space-y-4 mb-8 shrink-0">
-                    {/* タイトルロゴ（ここを2秒長押しで管理者メニュー） */}
+                    {/* タイトル長押しで隠しコマンド発火 */}
                     <h1 
                         className="text-4xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 tracking-tighter drop-shadow-2xl py-2 cursor-default select-none active:scale-95 transition-transform"
                         onMouseDown={handlePressStart}
@@ -384,22 +415,23 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     >
                         MANSUKE<br/>WEREWOLF
                     </h1>
-                    <p className="text-xs md:text-sm text-gray-500 font-mono">Server Edition Ver 3.0 Super beta</p>
+                    <p className="text-xs md:text-sm text-gray-500 font-mono">Server Edition Ver 3.1</p>
                 </div>
 
                 <div className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative w-full mx-auto flex flex-col h-auto">
                     
-                    {/* 初期画面 or 途中参加画面 */}
+                    {/* 画面: 初期画面 or 途中参加部屋リスト */}
                     {(homeStep === 'initial' || homeStep === 'spectateRoomList') && (
                         <div className="flex flex-col h-full animate-fade-in space-y-4">
                             
-                            {/* 戻るボタン（途中参加モード、または管理者モード時） */}
+                            {/* 戻るボタン (途中参加画面 or 管理者認証済み時) */}
                             {(homeStep === 'spectateRoomList' || isAdmin) && (
                                 <button onClick={() => homeStep === 'spectateRoomList' ? setHomeStep('initial') : setHomeStep('adminMenu')} className="absolute top-6 left-6 text-gray-500 hover:text-white flex items-center gap-1">
                                     <ArrowRight className="rotate-180" size={14}/> {isAdmin ? "管理者メニューに戻る" : "戻る"}
                                 </button>
                             )}
 
+                            {/* 部屋リスト表示エリア */}
                             <div className="flex flex-col min-h-0">
                                 <h2 className="text-lg md:text-xl font-bold text-white flex items-center justify-between gap-2 mb-4 shrink-0 mt-2">
                                     <span className="flex items-center gap-2">
@@ -410,6 +442,8 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                                         <RefreshCw size={10} className="animate-spin-slow"/> リアルタイム更新中
                                     </span>
                                 </h2>
+                                
+                                {/* 部屋カードリスト */}
                                 <div className={`overflow-y-auto custom-scrollbar pr-2 grid grid-cols-1 md:grid-cols-2 gap-3 content-start ${availableRooms.length > 0 ? "max-h-[300px]" : ""}`}>
                                     {availableRooms.length === 0 ? (
                                         <div className="col-span-1 md:col-span-2 flex flex-col items-center justify-center py-12 text-gray-500 border-2 border-dashed border-gray-800 rounded-2xl bg-gray-900/30">
@@ -449,16 +483,16 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                             </div>
 
                             <div className="shrink-0 pt-2 space-y-4">
+                                {/* 手動入力トリガー */}
                                 <div className="text-center space-y-2">
                                     <button onClick={() => setShowManualInputModal(true)} className="text-sm text-gray-400 hover:text-white underline underline-offset-4 decoration-gray-600 hover:decoration-white transition block mx-auto">
                                         部屋が見つかりませんか？ コードを直接入力する
                                     </button>
                                 </div>
 
-                                {/* 通常モード（initial）でのみ表示するボタン群 */}
+                                {/* メインアクションボタン (通常モード) */}
                                 {homeStep === 'initial' && !isAdmin && (
                                     <div className="space-y-3 mt-4 pt-4 border-t border-gray-800">
-                                        {/* 新しく追加: 通常プレイヤー用の部屋作成ボタン */}
                                         <button onClick={() => { setHomeStep('nickname'); setHomeMode('create'); }} className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl shadow-lg hover:scale-[1.02] transition transform text-white font-black text-lg flex flex-col items-center justify-center gap-1 group">
                                             <span className="flex items-center gap-2"><Crown size={24} /> 部屋を新しく作成</span>
                                         </button>
@@ -477,7 +511,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                         </div>
                     )}
 
-                    {/* 管理者メニュー */}
+                    {/* 画面: 管理者メニュー */}
                     {homeStep === 'adminMenu' && (
                         <div className="flex flex-col h-full animate-fade-in space-y-6 justify-center">
                             <button onClick={() => { setHomeStep('initial'); setIsAdmin(false); }} className="absolute top-6 left-6 text-gray-500 hover:text-white flex items-center gap-1"><ArrowRight className="rotate-180" size={14}/> 戻る</button>
@@ -491,7 +525,6 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto w-full">
-                                {/* アニメーション削除: group-hover:animate-bounce を削除 */}
                                 <button onClick={() => { setHomeStep('nickname'); setHomeMode('create'); }} className="md:col-span-2 py-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl shadow-lg hover:scale-105 transition transform text-white font-black text-xl flex flex-col items-center justify-center gap-2 group">
                                     <Crown size={32} /> 部屋を新しく作成
                                 </button>
@@ -517,7 +550,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                         </div>
                     )}
 
-                    {/* ニックネーム入力（共通） */}
+                    {/* 画面: ニックネーム入力 (作成/参加/観戦 共通) */}
                     {homeStep === 'nickname' && (
                         <div className="space-y-6 animate-fade-in flex flex-col justify-center h-full min-h-[400px]">
                             <button onClick={() => { setHomeStep(homeMode === 'spectate' ? 'spectateRoomList' : (isAdmin ? 'adminMenu' : 'initial')); setAdminPassInput(""); setRoomCodeInput(""); }} className="text-xs text-gray-500 hover:text-white flex items-center gap-1 mb-2 absolute top-6 left-6"><ArrowRight className="rotate-180" size={12}/> 戻る</button>
