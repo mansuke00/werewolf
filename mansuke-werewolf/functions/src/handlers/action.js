@@ -142,7 +142,13 @@ exports.submitNightActionHandler = async (request) => {
             if (isWiseWolfAlive && targetId !== 'skip' && targetSecret.exists) {
                  // ターゲット役職特定
                  const targetRoleKey = targetSecret.data().role;
-                 const tgtRoleName = ROLE_NAMES[targetRoleKey] || "不明";
+                 const originalRoleKey = targetSecret.data().originalRole;
+                 let tgtRoleName = ROLE_NAMES[targetRoleKey] || "不明";
+                 
+                 // 呪われし者の覚醒後表示
+                 if (originalRoleKey === 'cursed' && targetRoleKey === 'werewolf') {
+                     tgtRoleName = "呪われし者 - 人狼陣営";
+                 }
                  
                  // 結果カード：役職判明
                  resultCards.push({ label: `${targetName}の役職`, value: tgtRoleName, sub: targetName, isBad: false, icon: "Moon" });
@@ -193,7 +199,7 @@ exports.submitNightActionHandler = async (request) => {
             let dispRole = ROLE_NAMES[tgtRoleKey];
             // 呪われし者の表示調整
             if (targetSecret.data().originalRole === 'cursed') {
-                dispRole = tgtRoleKey === 'werewolf' ? "呪われし者 - 人狼陣営" : "呪われし者 - 市民陣営";
+                dispRole = tgtRoleKey === 'werewolf' ? "呪われし者 - 人狼陣営" : "呪われし者";
             }
             resultCards.push({ label: "賢者結果", value: dispRole, sub: tgtName, isBad: false, icon: "Eye" });
             newLogs.push({ text: `賢者チームに、「${tgtName}の正確な役職は${dispRole}」との情報を提供しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: teamIds });
@@ -251,6 +257,7 @@ exports.nightInteractionHandler = async (request) => {
     const players = pSnap.docs.map((d, i) => {
         const p = { id: d.id, ...d.data() };
         if(secretSnaps[i].exists) p.role = secretSnaps[i].data().role;
+        if(secretSnaps[i].exists) p.originalRole = secretSnaps[i].data().originalRole; // originalRoleも必要
         return p;
     });
     
@@ -330,7 +337,12 @@ exports.nightInteractionHandler = async (request) => {
                       const targetPlayer = players.find(p => p.id === targetId);
                       
                       if (isWiseWolfAlive && targetId !== 'skip' && targetPlayer) {
-                           const tgtRoleName = ROLE_NAMES[targetPlayer.role] || "不明";
+                           let tgtRoleName = ROLE_NAMES[targetPlayer.role] || "不明";
+                           // 呪われし者の覚醒後表示
+                           if (targetPlayer.originalRole === 'cursed' && targetPlayer.role === 'werewolf') {
+                               tgtRoleName = "呪われし者 - 人狼陣営";
+                           }
+
                            // 結果カード：役職判明
                            resultCards.push({ label: `${targetName}の役職`, value: tgtRoleName, sub: targetName, isBad: false, icon: "Moon" });
                            

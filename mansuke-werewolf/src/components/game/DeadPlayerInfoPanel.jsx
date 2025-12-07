@@ -28,7 +28,13 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
             const def = ROLE_DEFINITIONS[roleKey] || (isSpectator ? ROLE_DEFINITIONS['spectator'] : null);
             
             // 表示名・アイコン決定。定義がない場合はデフォルト値
-            const roleName = def ? def.name : (roleKey === 'unknown' ? "不明" : roleKey);
+            let roleName = def ? def.name : (roleKey === 'unknown' ? "不明" : roleKey);
+            
+            // 呪われし者が人狼に覚醒している場合の表示変更
+            if (p.originalRole === 'cursed' && roleKey === 'werewolf') {
+                roleName = "呪われし者 - 人狼陣営";
+            }
+
             const Icon = def ? def.icon : (isSpectator ? Eye : User);
             const team = def ? def.team : 'other';
 

@@ -210,9 +210,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       };
 
       const roleGroups = {
-          citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'cursed', 'elder', 'assassin'],
+          citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'elder', 'assassin'],
           werewolf: ['werewolf', 'greatwolf', 'wise_wolf', 'madman'],
-          third: ['fox', 'teruteru']
+          third: ['fox', 'teruteru', 'cursed']
       };
 
       // --------------------------------------------------------------------------------

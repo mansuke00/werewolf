@@ -378,7 +378,7 @@ const applyPhaseChange = async (t, roomRef, room, players) => {
                   
                   // 人狼チームに変更があった際の仲間リスト更新
                   const wolfTeamMembers = players.filter(p => ['werewolf', 'greatwolf', 'wise_wolf', 'madman'].includes(p.role));
-                  const awakeningPlayer = { id: atkId, role: 'werewolf', name: tgt.name };
+                  const awakeningPlayer = { id: atkId, role: 'werewolf', name: tgt.name, originalRole: 'cursed' }; // Add originalRole
                   wolfTeamMembers.forEach(w => {
                       batchOps.push({ ref: roomRef.collection('players').doc(w.id).collection('secret').doc('roleData'), data: { teammates: admin.firestore.FieldValue.arrayUnion(awakeningPlayer) }, merge: true });
                   });

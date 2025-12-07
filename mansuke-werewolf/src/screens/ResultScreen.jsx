@@ -47,7 +47,7 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
     // UI状態管理
     const [showDetail, setShowDetail] = useState(false); // ログ詳細
     const [showRoleDetail, setShowRoleDetail] = useState(false); // 役職一覧
-    const [fullPlayers, setFullPlayers] = useState(players || []); // 役職開示済みプレイヤーリスト
+    const [roleData, setRoleData] = useState({}); // 取得した役職データ (ID -> { role, originalRole })
     const [myTrueRole, setMyTrueRole] = useState(null); // 自分の正体
     const [dataLoaded, setDataLoaded] = useState(false);
     const [loading, setLoading] = useState(false); 
@@ -64,6 +64,18 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
             setRoomCode("");
         }
     }, [isClosed, setView, setRoomCode]);
+
+    // リアルタイムなplayers情報と、取得したroleDataをマージする
+    // これにより、オンライン状態やステータスの変化が即座に反映される
+    const fullPlayers = useMemo(() => {
+        return players.map(p => {
+            const secret = roleData[p.id] || {};
+            // 観戦者はroleDataになくてもspectator
+            const role = p.isSpectator ? 'spectator' : (secret.role || p.role); 
+            const originalRole = secret.originalRole || p.originalRole;
+            return { ...p, role, originalRole };
+        });
+    }, [players, roleData]);
 
     // Effect: 役職情報の全開示 (Cloud Functions / Firestore)
     // ゲーム終了時のみ実行
@@ -87,16 +99,15 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                 const fn = httpsCallable(functions, 'getAllPlayerRoles');
                 const res = await fn({ roomCode: roomId });
                 if (res.data && res.data.players) {
-                    const processedPlayers = res.data.players.map(p => {
-                        if (p.isSpectator) return { ...p, role: 'spectator' };
-                        return p;
+                    // 役職データだけを抽出してステートに保存
+                    const newRoleData = {};
+                    res.data.players.forEach(p => {
+                        newRoleData[p.id] = { role: p.role, originalRole: p.originalRole };
                     });
-                    setFullPlayers(processedPlayers);
-                } else {
-                    setFullPlayers(players);
+                    setRoleData(newRoleData);
                 }
             } catch (e) {
-                setFullPlayers(players);
+                console.error("Failed to fetch roles:", e);
             } finally {
                 setDataLoaded(true);
             }
@@ -105,7 +116,8 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
         if(room.status === 'finished' || room.status === 'aborted') {
             fetchRoles();
         }
-    }, [room, players, roomId, user, myPlayer]);
+    }, [room.status, roomId, user, myPlayer?.isSpectator]); 
+    // playersを依存配列から除外して、役職取得APIの過剰な呼び出しを防止
 
     // Memo: 勝利プレイヤーの抽出
     // 各陣営の勝利条件に基づいてフィルタリング
@@ -324,7 +336,13 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                                   <div className="flex flex-wrap justify-center gap-2 md:gap-4 w-full">
                                       {winningPlayers.map(p => {
                                           const def = p.role && ROLE_DEFINITIONS[p.role];
-                                          const roleName = def ? def.name : "不明";
+                                          let roleName = def ? def.name : "不明";
+                                          
+                                          // 呪われし者の覚醒後表示
+                                          if (p.originalRole === 'cursed' && p.role === 'werewolf') {
+                                              roleName = "呪われし者 - 人狼陣営";
+                                          }
+
                                           const Icon = def ? def.icon : Sun;
                                           return (
                                               <div key={p.id} className={`w-32 md:w-40 p-3 md:p-4 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 relative ${p.status === 'dead' ? 'bg-gray-900/50 border-gray-700 opacity-70 grayscale' : 'bg-gradient-to-b from-gray-800 to-gray-900 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)]'}`}>

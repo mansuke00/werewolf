@@ -28,7 +28,7 @@ export const MiniRoleCard = ({ role, teammates, originalRole }) => {
   let displayName = roleDef?.name;
   if (originalRole === 'cursed') {
       if (role === 'werewolf') displayName = "呪われし者 - 人狼陣営";
-      else displayName = "呪われし者 - 市民陣営";
+      else displayName = "呪われし者";
   }
 
   return (
@@ -62,7 +62,14 @@ export const MiniRoleCard = ({ role, teammates, originalRole }) => {
                        <p className="text-[9px] md:text-[10px] text-white">
                            {/* 仲間がいる かつ 非表示対象役職でない場合のみリスト表示 */}
                            {safeTeammates.length > 0 && !hiddenTeammateRoles.includes(safeRole)
-                             ? safeTeammates.map(t => `${t.name}(${ROLE_DEFINITIONS[t.role]?.name || '不明'})`).join(', ')
+                             ? safeTeammates.map(t => {
+                                 let tRoleName = ROLE_DEFINITIONS[t.role]?.name || '不明';
+                                 // 呪われし者が覚醒している場合
+                                 if (t.originalRole === 'cursed' && t.role === 'werewolf') {
+                                     tRoleName = "呪われし者 - 人狼陣営";
+                                 }
+                                 return `${t.name}(${tRoleName})`;
+                             }).join(', ')
                              : (hiddenTeammateRoles.includes(safeRole) ? "非公開" : "なし")
                            }
                        </p>

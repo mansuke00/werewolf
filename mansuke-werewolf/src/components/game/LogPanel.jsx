@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { FileText, Clock, Lock, Info, Moon, Sun, Eye, CheckCircle2, Gavel, ListFilter, Sparkles, ScrollText } from 'lucide-react';
+import { FileText, Clock, Lock, Info, Moon, Sun, Eye, CheckCircle2, Gavel, ListFilter, ScrollText } from 'lucide-react';
 
 export const LogPanel = ({ logs, showSecret, user }) => {
       // ログリスト末尾への参照。スクロール制御用
@@ -38,12 +38,18 @@ export const LogPanel = ({ logs, showSecret, user }) => {
           // 3. 日付ごとのグルーピング処理
           // 構造: [{ day: 1, logs: [...] }, { day: 2, logs: [...] }]
           const groups = [];
-          let currentDay = null;
+          let currentDay = null; // 初期値null
           let currentGroup = null;
 
           filtered.forEach(log => {
-              // day未定義時は0（開始前）扱い
-              const day = log.day !== undefined ? log.day : 0; 
+              // dayの決定ロジック修正:
+              // log.dayが存在すればそれを使用。
+              // 存在しない(undefined/null)場合、直前のログの日付(currentDay)を引き継ぐ。
+              // これにより、途中でdayが欠落したログがあっても新しいグループ（開始前など）が作られるのを防ぐ。
+              let day = log.day;
+              if (day === undefined || day === null) {
+                  day = currentDay !== null ? currentDay : 0;
+              }
               
               // 日付が変わったら新グループ作成
               if (day !== currentDay) {
@@ -142,7 +148,8 @@ export const LogPanel = ({ logs, showSecret, user }) => {
                                  {/* 日付セパレーター (スティッキー) */}
                                  <div className="sticky top-0 z-10 flex justify-center mb-4">
                                      <span className="bg-gray-800/90 backdrop-blur border border-gray-600 px-4 py-1 rounded-full text-xs font-bold text-gray-300 shadow-md">
-                                         {group.day > 0 ? `${group.day}日目` : "ゲーム開始前"}
+                                         {/* ユーザー要望により「ゲーム開始前」表記を廃止し「0日目」などに変更 */}
+                                         {group.day}日目
                                      </span>
                                  </div>
 
@@ -162,7 +169,7 @@ export const LogPanel = ({ logs, showSecret, user }) => {
                                                    <div className="flex items-center gap-2 mb-1.5 opacity-80">
                                                        <Icon size={12} className={`shrink-0 ${style.color}`} />
                                                        <span className={`text-[10px] font-bold ${style.color} uppercase tracking-wider truncate`}>
-                                                           {log.phase}
+                                                           {log.phase || ""}
                                                        </span>
                                                        {/* 秘匿アイコン */}
                                                        {log.secret && <Lock size={10} className="text-amber-400 ml-auto shrink-0"/>}

@@ -35,17 +35,17 @@ export const ROLE_DEFINITIONS = {
   sage: { name: "賢者", team: "citizen", desc: "毎晩1人を占い、その人の正確な役職名を知ることができます。", icon: Eye },
   killer: { name: "人狼キラー", team: "citizen", desc: "人狼に襲撃されると死亡しますが、襲撃してきた人狼1人を道連れにします。", icon: Skull },
   detective: { name: "名探偵", team: "citizen", desc: "誰かが死亡した日の夜に、その死因や正体に関する情報を知ることができます。", icon: Search },
-  cursed: { name: "呪われし者", team: "citizen", desc: "最初は市民ですが、人狼に襲撃されると死亡せず、人狼に覚醒します。", icon: User },
   elder: { name: "長老", team: "citizen", desc: "人狼の襲撃を1度だけ耐えることができます。", icon: User },
   assassin: { name: "ももすけ", team: "citizen", desc: "夜に一度だけ、護衛をも貫通して1人の存在意義を抹消する（暗殺する）ことができます。", icon: Crosshair },
   
   // 人狼陣営
   werewolf: { name: "人狼", team: "werewolf", desc: "夜に仲間と相談して市民1人を襲撃します。", icon: Moon },
-  greatwolf: { name: "大狼", team: "werewolf", desc: "占われても「人狼でない」と判定される、強力な人狼です。", icon: Moon },
+  greatwolf: { name: "大狼", team: "werewolf", desc: "占われても「人狼ではない」と判定される、強力な人狼です。", icon: Moon },
   wise_wolf: { name: "賢狼", team: "werewolf", desc: "生存している間、襲撃先のプレイヤーの正確な役職を人狼チームに提供する人狼です。", icon: Moon },
   madman: { name: "狂人", team: "werewolf", desc: "人狼の味方をする市民です。嘘をついて場を混乱させます。", icon: User },
   
   // 第3陣営
   fox: { name: "妖狐", team: "third", desc: "人狼に襲撃されても死にませんが、占われると呪い殺されます。最後まで生き残れば単独勝利です。", icon: Sun },
   teruteru: { name: "てるてる坊主", team: "third", desc: "昼の投票で処刑されると、最終的な勝利陣営に加え追加で勝利となります。", icon: Smile },
+  cursed: { name: "呪われし者", team: "third", desc: "最初は市民としてカウントされますが、人狼に襲撃されると死亡せず、人狼陣営に覚醒します。", icon: User },
 };
