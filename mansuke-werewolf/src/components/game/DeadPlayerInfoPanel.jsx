@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Skull, User, Crown, Eye, WifiOff, Users, SortAsc, LayoutGrid, BadgeCheck } from 'lucide-react';
-import { ROLE_DEFINITIONS } from '../../constants/gameData.js';
-import { isPlayerOnline } from '../../utils/helpers.js';
+import { Skull, User, Crown, Eye, WifiOff, Users, SortAsc, LayoutGrid, BadgeCheck, Ban } from 'lucide-react';
+import { ROLE_DEFINITIONS } from '../../constants/gameData';
+import { isPlayerOnline } from '../../utils/helpers';
 
 export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職" }) => {
     // 表示モード管理。'role'（役職・陣営別）、'name'（名前順）の切り替え
@@ -33,6 +33,8 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
             // 呪われし者が人狼に覚醒している場合の表示変更
             if (p.originalRole === 'cursed' && roleKey === 'werewolf') {
                 roleName = "呪われし者 - 人狼陣営";
+            } else if (p.originalRole === 'cursed') {
+                roleName = "呪われし者 - 市民陣営";
             }
 
             const Icon = def ? def.icon : (isSpectator ? Eye : User);
@@ -154,7 +156,6 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                                         <span>{section.label}</span>
                                         <span className="bg-black/20 px-1.5 rounded text-[10px]">{players.length}</span>
                                     </div>
-                                    {/* ブロック内スクロールを削除 */}
                                     <div className="p-2 gap-2 grid grid-cols-1 bg-black/10">
                                         {players.map(p => <PlayerCard key={p.id} player={p} />)}
                                     </div>
@@ -179,7 +180,6 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                                     <span className="bg-black/20 px-1.5 rounded text-[10px]">{totalCount}</span>
                                 </div>
                                 
-                                {/* ブロック内スクロールを削除 */}
                                 <div className="p-2 bg-black/10 space-y-2">
                                     {/* 役職ごとのブロック生成 */}
                                     {roleKeys.map(roleKey => {
@@ -211,10 +211,9 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
     }, [viewMode, processedPlayers]);
 
     return (
-        // 高さ制限を修正: LogPanelと同じクラスを適用して高さを揃える
-        // flex flex-col h-full bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-700/50 overflow-hidden relative shadow-lg
-        // (レイアウト安定のため w-full を追加)
-        <div className="flex flex-col w-full h-full bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-700/50 overflow-hidden relative shadow-lg">
+        // 高さ制限を追加 (h-[50vh] など) して、SPレイアウトでも伸びすぎないようにする
+        // lg:h-full でPCレイアウトでは親の高さに追従
+        <div className="flex flex-col w-full h-[50vh] lg:h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
             {/* パネルヘッダー */}
             <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex items-center justify-between shrink-0">
                 <span className="font-bold text-gray-200 flex items-center gap-2 text-sm truncate">
@@ -239,10 +238,10 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
             </div>
             
             {/* スクロールエリア */}
-            <div className="flex-1 overflow-y-auto p-3 custom-scrollbar min-h-0">
+            <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
                 {targets.length === 0 ? (
                     // 該当者なし時の空表示
-                    <div className="h-full flex flex-col items-center justify-center text-gray-500 text-sm py-8">
+                    <div className="h-full flex flex-col items-center justify-center text-gray-500 text-sm">
                         <Skull size={32} className="mb-2 opacity-50"/>
                         <p>該当するプレイヤーはいません</p>
                     </div>

@@ -341,6 +341,8 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                                           // 呪われし者の覚醒後表示
                                           if (p.originalRole === 'cursed' && p.role === 'werewolf') {
                                               roleName = "呪われし者 - 人狼陣営";
+                                          } else if (p.originalRole === 'cursed') {
+                                              roleName = "呪われし者 - 市民陣営";
                                           }
 
                                           const Icon = def ? def.icon : Sun;
@@ -399,7 +401,6 @@ export const ResultScreen = ({ room, players, setView, setRoomCode, roomCode, my
                 </div>
             </div>
 
-            {/* 試合ID表示バナー (右下) */}
             {showMatchId && (
                 <div className="absolute bottom-4 right-4 z-[200] animate-fade-in-up">
                     <div className="bg-gray-900/90 border border-indigo-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(99,102,241,0.2)] backdrop-blur-md relative hover:border-indigo-500/50 transition max-w-sm w-full mx-auto md:mx-0">
