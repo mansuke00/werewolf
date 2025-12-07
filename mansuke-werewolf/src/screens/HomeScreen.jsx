@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Crown, ArrowRight, Key, User, Search, RefreshCw, X, Eye, Settings, Trash2, Power, Construction, PlayCircle, History } from 'lucide-react';
+import { Users, Crown, ArrowRight, Key, User, Search, RefreshCw, X, Eye, Settings, Trash2, Power, Construction, PlayCircle, History, FileText, Clock } from 'lucide-react';
 import { setDoc, getDoc, getDocs, doc, serverTimestamp, collection, query, where, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
@@ -37,6 +37,11 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
     const [showManualInputModal, setShowManualInputModal] = useState(false);
     const [showSpectatorConfirmModal, setShowSpectatorConfirmModal] = useState(false); // 観戦参加確認
     const [isValidatingRoom, setIsValidatingRoom] = useState(false);
+
+    // ステート: パッチノートカード表示制御
+    const [showPatchNote, setShowPatchNote] = useState(true);
+    const [isPressingPatchNote, setIsPressingPatchNote] = useState(false);
+    const patchNoteTimerRef = useRef(null);
 
     // Effect: 管理者パスワード取得
     // Firestore 'system/settings' から取得
@@ -184,6 +189,26 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
         if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
             longPressTimerRef.current = null;
+        }
+    };
+
+    // 関数: パッチノート長押し開始
+    const handlePatchNotePressStart = () => {
+        setIsPressingPatchNote(true);
+        patchNoteTimerRef.current = setTimeout(() => {
+            // window.open ではなく location.href でページ遷移させる
+            window.location.href = 'https://mansuke.cerinal.com/werewolf/patch-notes';
+            setIsPressingPatchNote(false);
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 2000);
+    };
+
+    // 関数: パッチノート長押し中断
+    const handlePatchNotePressEnd = () => {
+        setIsPressingPatchNote(false);
+        if (patchNoteTimerRef.current) {
+            clearTimeout(patchNoteTimerRef.current);
+            patchNoteTimerRef.current = null;
         }
     };
 
@@ -396,6 +421,49 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                             <input type="password" placeholder="パスコード" className="flex-1 bg-black border border-gray-700 rounded-lg px-3 py-2 text-white outline-none focus:border-purple-500" value={adminPassInput} onChange={(e) => setAdminPassInput(e.target.value)} />
                             <button onClick={() => validateAdminPass(adminPassInput)} className="bg-purple-600 hover:bg-purple-500 text-white rounded-lg px-4 font-bold transition">認証</button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* パッチノートカード */}
+            {showPatchNote && (
+                <div className="fixed bottom-4 right-4 z-[150] w-80 bg-gray-900/90 border border-indigo-500/50 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md animate-fade-in-up">
+                    <div className="relative p-4">
+                        <button onClick={() => setShowPatchNote(false)} className="absolute top-2 right-2 text-gray-400 hover:text-white transition p-1 rounded-full hover:bg-white/10 z-20">
+                            <X size={16}/>
+                        </button>
+                        
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="bg-indigo-600/20 p-1.5 rounded-lg border border-indigo-500/30">
+                                <FileText size={16} className="text-indigo-400"/>
+                            </div>
+                            <h3 className="text-sm font-bold text-white">MANSUKE WEREWOLF<br/>パッチノート</h3>
+                        </div>
+                        
+                        <p className="text-[11px] text-gray-300 leading-relaxed mb-4">
+                            更新情報の確認・バグ報告・新役職や新機能のご提案は、パッチノートをご確認ください。
+                        </p>
+                        
+                        <button 
+                            className="w-full relative h-10 rounded-xl overflow-hidden bg-indigo-950 border border-indigo-500/30 group select-none"
+                            onMouseDown={handlePatchNotePressStart}
+                            onMouseUp={handlePatchNotePressEnd}
+                            onMouseLeave={handlePatchNotePressEnd}
+                            onTouchStart={handlePatchNotePressStart}
+                            onTouchEnd={handlePatchNotePressEnd}
+                        >
+                            {/* プログレスバー背景 */}
+                            <div 
+                                className={`absolute top-0 left-0 h-full bg-indigo-500/40 transition-all ease-linear ${isPressingPatchNote ? "duration-[2000ms] w-full" : "duration-200 w-0"}`}
+                            ></div>
+                            
+                            {/* ボタンテキスト */}
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-xs font-bold text-indigo-100 flex items-center gap-2 group-active:scale-95 transition-transform">
+                                    <Clock size={12}/> 2秒長押しでアクセス
+                                </span>
+                            </div>
+                        </button>
                     </div>
                 </div>
             )}
