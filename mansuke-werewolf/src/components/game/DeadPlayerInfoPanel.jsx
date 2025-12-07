@@ -303,9 +303,9 @@ const PlayerCard = ({ player, minimal }) => {
 
             {/* 死因表示エリア（観戦者以外かつ死因ありの場合） */}
             {!isSpectator && deathReason && (
-                <div className="text-right pl-2 max-w-[80px] shrink-0 flex flex-col items-end justify-center">
+                <div className="text-right pl-2 max-w-[100px] shrink-0 flex flex-col items-end justify-center">
                     <span className="text-[9px] text-gray-500 leading-none mb-0.5">死因</span>
-                    <span className="text-[10px] text-red-300 font-medium truncate w-full text-right" title={deathReason}>
+                    <span className="text-[10px] text-red-300 font-medium break-words w-full text-right" title={deathReason}>
                         {deathReason}
                     </span>
                 </div>

@@ -18,6 +18,45 @@ const archiveGame = async (t, roomRef, roomData, players, endStatus, winner = nu
     // 保存先を match_history コレクションに変更
     const historyRef = db.collection('artifacts').doc('mansuke-jinro').collection('public').doc('data').collection('match_history').doc(roomData.matchId);
     
+    // チャット履歴の取得 (全体チャットとチームチャット)
+    // サーバーサイドで取得してアーカイブデータに含める
+    const chatSnap = await roomRef.collection('chat').get();
+    const teamChatSnap = await roomRef.collection('teamChats').get();
+    
+    // ★修正: データを整形して取得。Timestampは数値(ミリ秒)に変換しておく
+    const formatMessage = (doc) => {
+        const data = doc.data();
+        let createdAtMillis = 0;
+        
+        // Timestamp型の処理
+        if (data.createdAt && typeof data.createdAt.toMillis === 'function') {
+            createdAtMillis = data.createdAt.toMillis();
+        } else if (data.createdAt instanceof Date) {
+            createdAtMillis = data.createdAt.getTime();
+        } else if (typeof data.createdAt === 'number') {
+            createdAtMillis = data.createdAt;
+        }
+
+        return {
+            id: doc.id,
+            text: data.text || "",
+            senderId: data.senderId || "unknown",
+            senderName: data.senderName || "不明",
+            day: data.day !== undefined ? data.day : 1,
+            type: data.type || 'normal', // normal, werewolf, grave etc
+            createdAt: createdAtMillis
+        };
+    };
+
+    const chatMessages = chatSnap.docs.map(formatMessage);
+    const teamMessages = teamChatSnap.docs.map(formatMessage);
+    
+    // 全てのメッセージを統合
+    const allMessages = [...chatMessages, ...teamMessages];
+    
+    // ★追加: 時系列順にソート（数値比較なので確実）
+    allMessages.sort((a, b) => a.createdAt - b.createdAt);
+
     // アーカイブするデータを作成
     const archiveData = {
         matchId: roomData.matchId,
@@ -42,16 +81,30 @@ const archiveGame = async (t, roomRef, roomData, players, endStatus, winner = nu
             isSpectator: p.isSpectator || false,
             isDev: p.isDev || false
         })),
-        // 必要であればここに chatMessages を追加することも可能
-        // 無料枠突破が怖いから現状見送り
-        chatMessages: [], 
+        // チャットメッセージを保存
+        // 無料枠やドキュメントサイズ制限への懸念はあるが、履歴閲覧のため保存する
+        chatMessages: allMessages, 
         createdAt: roomData.createdAt || admin.firestore.FieldValue.serverTimestamp(),
         startedAt: roomData.phaseStartTime || null,
-        endedAt: admin.firestore.FieldValue.serverTimestamp()
+        endedAt: admin.firestore.FieldValue.serverTimestamp(),
+        // 対面モードの設定なども保存
+        inPersonMode: roomData.inPersonMode || false
     };
 
     // 履歴データの書き込み
     t.set(historyRef, archiveData);
+
+    // ★追加: 元の部屋データに「有効期限（削除予定時刻）」を設定
+    // ゲーム終了から24時間後に削除対象とする
+    // これにより、リザルト画面閲覧の猶予を持たせつつ、古い部屋データが確実に掃除されるようにする
+    // ※FirestoreのTTL(Time-to-Live)機能で expireAt フィールドを指定すると自動削除されます
+    const expireDate = new Date();
+    expireDate.setHours(expireDate.getHours() + 24);
+    
+    t.update(roomRef, { 
+        expireAt: admin.firestore.Timestamp.fromDate(expireDate),
+        isArchived: true // アーカイブ済みフラグ
+    });
 };
 
 // フェーズ変更を適用

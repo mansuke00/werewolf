@@ -29,6 +29,13 @@ match /{path=**}/players/{playerId} {
   allow read: if isAuth();
 }
 
+// ★追加: 試合履歴データ (Match History)
+// LogViewerScreen (GAME ARCHIVE) で参照するため、認証済みユーザーに読み取りを許可
+match /artifacts/mansuke-jinro/public/data/match_history/{matchId} {
+  allow read: if isAuth();
+  allow write: if false; // 書き込みはサーバーサイド(Cloud Functions)のみ
+}
+
 // メインの部屋データへのパス
 match /artifacts/mansuke-jinro/public/data/rooms/{roomId} {
   
