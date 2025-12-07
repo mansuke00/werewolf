@@ -907,7 +907,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                             onClick={() => setRightPanelTab('gemini')}
                                             className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'gemini' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-b-2 border-transparent'}`}
                                         >
-                                            <Sparkles size={16}/> Gemini AI Chat
+                                            <Sparkles size={16}/> AI Chat
                                             {unreadGemini > 0 && (
                                                 <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce">{unreadGemini}</span>
                                             )}
@@ -916,7 +916,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                             onClick={() => setRightPanelTab('log')}
                                             className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'log' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-b-2 border-transparent'}`}
                                         >
-                                            <FileText size={16}/> ログ
+                                            <FileText size={16}/> ゲームログ
                                         </button>
                                     </div>
                                     <div className="flex-1 min-h-0 relative">

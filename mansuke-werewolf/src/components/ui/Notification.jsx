@@ -64,10 +64,10 @@ export const Notification = ({ message, type = 'info', duration = 3000, onClose 
 
     return (
         // 通知コンテナ (固定配置)
-        // z-index: 150 (モーダル類と同じか手前)
+        // z-index: 9999 (最前面表示、あらゆるモーダルよりも上)
         // isRemovingフラグに応じてスライド・フェードアウトのアニメーションクラスを適用
         <div 
-            className={`fixed top-4 right-4 z-[150] max-w-sm w-full md:w-auto md:min-w-[300px] transition-all duration-300 transform ${
+            className={`fixed top-4 right-4 z-[9999] max-w-sm w-full md:w-auto md:min-w-[300px] transition-all duration-300 transform ${
                 isRemoving ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'
             }`}
         >

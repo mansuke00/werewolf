@@ -133,12 +133,19 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
 
     // 関数: 部屋コード検証
     // 入力されたコードの部屋が存在するか、参加可能かチェック
-    const handleCheckRoom = async () => {
-        if (roomCodeInput.length !== 4) return;
+    const handleCheckRoom = async (e) => {
+        // フォーム送信時のリロード防止
+        if (e && e.preventDefault) e.preventDefault();
+        
+        // 文字列として確実に処理するためString変換とtrimを行う
+        const targetCode = String(roomCodeInput).trim();
+
+        if (targetCode.length !== 4) return;
         setIsValidatingRoom(true);
 
         try {
-            const roomRef = doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCodeInput);
+            // ドキュメントIDとして直接指定して取得
+            const roomRef = doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', targetCode);
             const roomSnap = await getDoc(roomRef);
 
             if (roomSnap.exists()) {
@@ -155,7 +162,7 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     setShowSpectatorConfirmModal(true);
                 } else {
                     // 終了/中断 -> エラー
-                    setNotification({ message: "部屋が見つかりません", type: "error" });
+                    setNotification({ message: "この部屋は既に終了しています", type: "error" });
                 }
             } else {
                 setNotification({ message: "部屋が見つかりません", type: "error" });
@@ -369,22 +376,24 @@ export const HomeScreen = ({ user, setRoomCode, setView, setNotification, setMyP
                     <div className="bg-gray-900 border border-gray-700 rounded-3xl p-6 w-full max-w-md shadow-2xl relative">
                         <button onClick={() => setShowManualInputModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24}/></button>
                         <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><Search size={20}/> 部屋コードを入力</h3>
-                        <div className="space-y-4">
+                        <form onSubmit={handleCheckRoom} className="space-y-4">
                             <input 
-                                type="number" 
+                                type="text" 
+                                inputMode="numeric"
+                                pattern="\d*"
                                 placeholder="部屋コード (4桁)" 
                                 className="w-full bg-gray-950/50 border border-gray-600 rounded-xl px-4 py-3 text-white outline-none focus:border-blue-500 transition text-center tracking-widest font-bold text-lg" 
                                 value={roomCodeInput} 
                                 onChange={(e) => setRoomCodeInput(e.target.value.slice(0, 4))} 
                             />
                             <button 
-                                onClick={handleCheckRoom} 
+                                type="submit"
                                 disabled={roomCodeInput.length !== 4 || isValidatingRoom} 
                                 className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl py-3 font-bold transition flex items-center justify-center gap-2"
                             >
                                 {isValidatingRoom ? "確認中..." : <>次へ <ArrowRight size={18}/></>}
                             </button>
-                        </div>
+                        </form>
                     </div>
                 </div>
             )}
