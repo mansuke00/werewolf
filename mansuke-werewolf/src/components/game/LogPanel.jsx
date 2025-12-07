@@ -18,7 +18,7 @@ export const LogPanel = ({ logs, showSecret, user }) => {
       // ログのフィルタリングとグルーピング（重い処理のためメモ化）
       const groupedLogs = useMemo(() => {
           // 1. 閲覧権限チェック
-          // showSecret(神視点)がtrueなら全ログ許可
+          // showSecret(霊界視点)がtrueなら全ログ許可
           // falseなら visibleTo プロパティを確認。指定なしか、自分のuidが含まれる場合のみ許可
           const accessibleLogs = showSecret 
               ? (logs || []) 
@@ -101,10 +101,10 @@ export const LogPanel = ({ logs, showSecret, user }) => {
                      <span className="flex items-center gap-2 text-blue-100">
                          <FileText size={16} className="text-blue-400 shrink-0"/> ゲームログ
                      </span>
-                     {/* 神視点バッジ表示 */}
+                     {/* 霊界視点バッジ表示 */}
                      {showSecret && (
                          <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full border border-yellow-500/30 flex items-center gap-1 shadow-[0_0_10px_rgba(234,179,8,0.2)] animate-pulse whitespace-nowrap">
-                             <Eye size={12} className="shrink-0"/> 神視点
+                             <Eye size={12} className="shrink-0"/> 霊界視点
                          </span>
                      )}
                  </div>

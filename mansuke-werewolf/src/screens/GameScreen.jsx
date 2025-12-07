@@ -213,6 +213,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
 
     // Effect: 死亡時の全プレイヤー役職取得
     // 死亡時はCloud Functions経由で全員の役職情報を取得可能
+    // 画面更新なしで常時情報が更新されるように、roomDay, roomPhase を依存配列に追加
     useEffect(() => {
         if (isDead && !isGameEnded) {
             const fetchAllRoles = async () => {
@@ -226,7 +227,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
             };
             fetchAllRoles();
         }
-    }, [isDead, roomCode, isGameEnded]);
+    }, [isDead, roomCode, isGameEnded, roomDay, roomPhase]);
 
     // Effect: 役職（チーム）チャット監視設定
     // 自分の役職に応じて適切なチャンネルを購読

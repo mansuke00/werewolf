@@ -154,8 +154,8 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                                         <span>{section.label}</span>
                                         <span className="bg-black/20 px-1.5 rounded text-[10px]">{players.length}</span>
                                     </div>
-                                    {/* ブロック内スクロール: max-h-48 (192px) を設定 */}
-                                    <div className="p-2 gap-2 grid grid-cols-1 bg-black/10 max-h-48 overflow-y-auto custom-scrollbar">
+                                    {/* ブロック内スクロールを削除 */}
+                                    <div className="p-2 gap-2 grid grid-cols-1 bg-black/10">
                                         {players.map(p => <PlayerCard key={p.id} player={p} />)}
                                     </div>
                                 </div>
@@ -179,8 +179,8 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                                     <span className="bg-black/20 px-1.5 rounded text-[10px]">{totalCount}</span>
                                 </div>
                                 
-                                {/* ブロック内スクロール: max-h-60 (240px) を設定 */}
-                                <div className="p-2 bg-black/10 space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                                {/* ブロック内スクロールを削除 */}
+                                <div className="p-2 bg-black/10 space-y-2">
                                     {/* 役職ごとのブロック生成 */}
                                     {roleKeys.map(roleKey => {
                                         const players = roleGroups[roleKey];
