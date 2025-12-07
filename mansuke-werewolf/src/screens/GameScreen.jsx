@@ -829,7 +829,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                         <div className="h-full flex flex-col gap-4 min-h-0">
                             {/* 霊界チャット */}
                             <div className="flex-1 border border-purple-500/30 rounded-2xl overflow-hidden min-h-0 flex flex-col">
-                                 <ChatPanel messages={graveMessages} user={user} teammates={[]} myPlayer={safeMyPlayer} onSendMessage={handleSendGraveMessage} title="霊界チャット" disableFilter={true} />
+                                 {/* 霊界チャット: 役職表示あり */}
+                                 <ChatPanel messages={graveMessages} user={user} teammates={[]} myPlayer={safeMyPlayer} onSendMessage={handleSendGraveMessage} title="霊界チャット" disableFilter={true} showRole={true} players={displayPlayers} />
                             </div>
                             
                             {/* 生存者チャット閲覧 (対面以外) */}
@@ -837,7 +838,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                 <div className="h-1/3 border border-gray-700 rounded-2xl overflow-hidden relative shrink-0 flex flex-col">
                                      <div className="absolute top-0 right-0 bg-gray-800/80 px-3 py-1 text-sm font-bold text-gray-300 z-10 border-bl rounded-bl-xl shadow-md flex items-center gap-2"><Eye size={14} className="text-blue-400"/> 生存者チャット (閲覧のみ)</div>
                                      <div className="h-full overflow-hidden opacity-80 hover:opacity-100 transition flex flex-col">
-                                          <ChatPanel messages={messages} user={{uid: 'dummy'}} teammates={[]} myPlayer={{...safeMyPlayer, status: 'alive'}} title="" readOnly={true} disableFilter={true} />
+                                          {/* 生存者チャット閲覧: 役職表示あり */}
+                                          <ChatPanel messages={messages} user={{uid: 'dummy'}} teammates={[]} myPlayer={{...safeMyPlayer, status: 'alive'}} title="" readOnly={true} disableFilter={true} showRole={true} players={displayPlayers} />
                                      </div>
                                 </div>
                             )}

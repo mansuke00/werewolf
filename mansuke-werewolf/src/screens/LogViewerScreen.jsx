@@ -5,6 +5,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
 import { LogPanel } from '../components/game/LogPanel.jsx';
 import { DeadPlayerInfoPanel } from '../components/game/DeadPlayerInfoPanel.jsx';
+import { ChatPanel } from '../components/game/ChatPanel.jsx';
 
 // ★追加: 堅牢な日時変換ヘルパー (Firestore Timestamp, Date, 数値, 文字列などに対応)
 const safeGetMillis = (timestamp) => {
@@ -108,14 +109,6 @@ export const LogViewerScreen = ({ setView }) => {
                 const promises = [];
                 
                 // B-2: 名前検索 (match_history は構造が違うため、collectionGroupでの検索は難しい可能性がある)
-                // match_history 内の players フィールドは配列のマップなので、単純な where('players.name') は使えない
-                // しかし、このアプリの現在のDB設計では players サブコレクションを持つのは rooms だけ
-                // したがって名前検索は rooms に対して行い、matchId を取得して match_history を引く必要があるが
-                // rooms は消える運命にあるため、ここでの完全な検索は難しい。
-                // とりあえず今回は match_history への切り替えを優先し、名前検索は一時的に rooms を対象とするか、
-                // あるいは将来的に match_history に検索用フィールドを追加する必要がある。
-                // 今回は既存ロジック（rooms検索）を維持し、そこから得られた matchId で match_history を引く形にトライする
-                
                 if (hasNameSearch) {
                     // プレイヤー名から部屋IDのセットを取得する (roomsコレクション)
                     const nameQuery = query(collectionGroup(db, 'players'), where('name', '==', searchName.trim()));
@@ -253,29 +246,6 @@ export const LogViewerScreen = ({ setView }) => {
         setLoading(false);
     };
 
-    // Memo: チャットメッセージのグループ化
-    // 日付(day)ごとにまとめて表示するため
-    const groupedChatMessages = useMemo(() => {
-        if (!searchResult?.chatMessages) return [];
-        const groups = [];
-        let currentDay = null;
-        let currentGroup = null;
-
-        searchResult.chatMessages.forEach(msg => {
-            const day = msg.day !== undefined ? msg.day : 1;
-            if (day !== currentDay) {
-                if (currentGroup) groups.push(currentGroup);
-                currentGroup = { day, messages: [] };
-                currentDay = day;
-            }
-            if (currentGroup) {
-                currentGroup.messages.push(msg);
-            }
-        });
-        if (currentGroup) groups.push(currentGroup);
-        return groups;
-    }, [searchResult]);
-
     // 時間選択肢生成 (0-23時)
     const timeOptions = [];
     for (let i = 0; i < 24; i++) {
@@ -283,7 +253,6 @@ export const LogViewerScreen = ({ setView }) => {
     }
 
     // 関数: 勝敗ステータス情報の生成
-    // 色、テキスト、アイコン定義を返す
     const getStatusInfo = (room) => {
         if (room.status === 'aborted') {
             return { 
@@ -583,36 +552,19 @@ export const LogViewerScreen = ({ setView }) => {
                                     <MessageSquare size={18} className="text-green-400"/> 生存者チャット
                                 </div>
                                 
-                                <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-black/10 relative">
-                                    {groupedChatMessages.length === 0 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-50 gap-2">
-                                            <MessageSquare size={32}/>
-                                            <p className="text-xs font-bold">チャット履歴はありません</p>
-                                        </div>
-                                    ) : (
-                                        groupedChatMessages.map((group) => (
-                                            <div key={group.day} className="relative">
-                                                <div className="sticky top-0 z-10 flex justify-center mb-4">
-                                                    <span className="bg-gray-800/90 border border-gray-600 px-3 py-0.5 rounded-full text-[10px] font-bold text-gray-300 shadow-sm backdrop-blur-sm">
-                                                        {group.day}日目
-                                                    </span>
-                                                </div>
-                                                <div className="space-y-3">
-                                                    {group.messages.map((msg, i) => (
-                                                        <div key={i} className="flex flex-col items-start animate-fade-in">
-                                                            <div className="flex items-baseline gap-2 mb-1 ml-1">
-                                                                <span className="text-[11px] font-bold text-blue-300">{msg.senderName}</span>
-                                                                <span className="text-[9px] text-gray-600">{new Date(safeGetMillis(msg.createdAt)).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                                                            </div>
-                                                            <div className="bg-gray-800/80 p-3 rounded-2xl rounded-tl-none border border-gray-700/50 text-sm text-gray-200 break-words max-w-full shadow-sm">
-                                                                {msg.text}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
+                                <div className="flex-1 overflow-y-auto bg-black/10 relative h-full">
+                                    {/* 修正: ChatPanelを使用して表示（役職表示モード有効） */}
+                                    <ChatPanel 
+                                        messages={searchResult.chatMessages} 
+                                        user={{uid: 'dummy'}} // 自分ではないのでID不一致にする
+                                        teammates={[]} 
+                                        myPlayer={{ status: 'alive' }} // ダミー
+                                        title="" 
+                                        readOnly={true} 
+                                        disableFilter={true} 
+                                        showRole={true} // ★役職表示ON
+                                        players={searchResult.players} // ★プレイヤー情報渡し
+                                    />
                                 </div>
                             </div>
                         )}

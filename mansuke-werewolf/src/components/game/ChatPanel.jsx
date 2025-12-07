@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MessageSquare, Send, Users, Ghost, PenTool, Lock, ArrowUp } from 'lucide-react';
 import { getMillis } from '../../utils/helpers';
+import { ROLE_DEFINITIONS } from '../../constants/gameData';
 
 // チャットパネルコンポーネント
 // 用途: 全体チャット、人狼チャット、霊界チャットなどの表示と入力
 // propsにより表示モードやフィルタリングルールを切り替える
+// showRole: trueの場合、送信者名に役職名を付与する（霊界・ログ用）
+// players: 全プレイヤー情報（役職解決用）
 export const ChatPanel = ({ 
     messages, 
     user, 
@@ -17,7 +20,9 @@ export const ChatPanel = ({
     currentPhase, 
     disableFilter = false, 
     readOnly = false, 
-    disabled = false 
+    disabled = false,
+    showRole = false,
+    players = []
 }) => {
   // 入力中のメッセージ状態
   const [chatInput, setChatInput] = useState("");
@@ -126,6 +131,28 @@ export const ChatPanel = ({
   // 味方判定（文字色変更用）
   const isTeammate = (id) => teammates && teammates.some(t => t.id === id);
   
+  // 送信者名の解決ロジック
+  const getSenderName = (senderId, defaultName) => {
+      if (!showRole) return defaultName;
+      
+      const player = players.find(p => p.id === senderId);
+      if (!player) return defaultName;
+
+      const roleKey = player.role || 'citizen';
+      let roleName = ROLE_DEFINITIONS[roleKey]?.name || roleKey;
+
+      // 呪われし者の覚醒状態に応じた表記
+      if (player.originalRole === 'cursed') {
+          if (roleKey === 'werewolf') {
+              roleName = "呪われし者 - 人狼陣営";
+          } else {
+              roleName = "呪われし者 - 市民陣営";
+          }
+      }
+
+      return `${player.name}（${roleName}）`;
+  };
+  
   // 無効状態（対面モードなど）のレンダリング
   if (disabled) {
       return (
@@ -176,7 +203,8 @@ export const ChatPanel = ({
               {sortedMessages.map((msg, idx) => {
                   const isMe = msg.senderId === user?.uid;
                   // 名前表示判定：自分以外で、かつ前のメッセージと送信者が違う場合（または最初）
-                  const showName = !isMe && (idx === 0 || sortedMessages[idx-1].senderId !== msg.senderId);
+                  // ※ showRole=true（霊界・ログ）の場合は、自分自身でも名前を表示する
+                  const showName = (showRole || !isMe) && (idx === 0 || sortedMessages[idx-1].senderId !== msg.senderId);
                   
                   // 日付ヘッダー表示判定:
                   // 1. メッセージにdayプロパティがあること
@@ -195,11 +223,14 @@ export const ChatPanel = ({
                           )}
 
                           {/* メッセージ本体 */}
-                          <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-fade-in`}>
+                          <div className={`flex flex-col ${isMe && !showRole ? "items-end" : "items-start"} animate-fade-in`}>
                                {showName && (
                                    <div className="flex items-baseline gap-2 mb-1 ml-1">
                                        {/* チームメイトは赤文字で強調（人狼チャット以外で人狼同士がわかるようにする等の意図） */}
-                                       <span className={`text-[10px] font-bold ${isTeammate(msg.senderId) && !isGrave && !isTeamChat ? "text-red-400" : "text-gray-400"}`}>{msg.senderName}</span>
+                                       {/* 霊界モード(showRole)なら、通常のグレーにする */}
+                                       <span className={`text-[10px] font-bold ${!showRole && isTeammate(msg.senderId) && !isGrave && !isTeamChat ? "text-red-400" : "text-gray-400"}`}>
+                                           {getSenderName(msg.senderId, msg.senderName)}
+                                       </span>
                                    </div>
                                )}
                                {/* メッセージ吹き出し */}
