@@ -178,23 +178,39 @@ export const ChatPanel = ({
                   // 名前表示判定：自分以外で、かつ前のメッセージと送信者が違う場合（または最初）
                   const showName = !isMe && (idx === 0 || sortedMessages[idx-1].senderId !== msg.senderId);
                   
+                  // 日付ヘッダー表示判定:
+                  // 1. メッセージにdayプロパティがあること
+                  // 2. 最初のメッセージ または 直前のメッセージと日付が異なる場合
+                  const showDayHeader = msg.day && (!sortedMessages[idx - 1] || sortedMessages[idx - 1].day !== msg.day);
+
                   return (
-                      // アニメーションをシンプルに変更 (animate-fade-in のみ)
-                      <div key={idx} className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-fade-in`}>
-                           {showName && (
-                               <div className="flex items-baseline gap-2 mb-1 ml-1">
-                                   {/* チームメイトは赤文字で強調（人狼チャット以外で人狼同士がわかるようにする等の意図） */}
-                                   <span className={`text-[10px] font-bold ${isTeammate(msg.senderId) && !isGrave && !isTeamChat ? "text-red-400" : "text-gray-400"}`}>{msg.senderName}</span>
+                      <div key={idx} className="w-full">
+                          {/* 日付区切りヘッダー */}
+                          {showDayHeader && (
+                              <div className="flex justify-center mt-2 mb-4 shrink-0">
+                                  <span className="bg-black/40 backdrop-blur-sm border border-gray-700/50 text-gray-400 text-[10px] font-bold px-3 py-0.5 rounded-full shadow-sm">
+                                      {msg.day}日目
+                                  </span>
+                              </div>
+                          )}
+
+                          {/* メッセージ本体 */}
+                          <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-fade-in`}>
+                               {showName && (
+                                   <div className="flex items-baseline gap-2 mb-1 ml-1">
+                                       {/* チームメイトは赤文字で強調（人狼チャット以外で人狼同士がわかるようにする等の意図） */}
+                                       <span className={`text-[10px] font-bold ${isTeammate(msg.senderId) && !isGrave && !isTeamChat ? "text-red-400" : "text-gray-400"}`}>{msg.senderName}</span>
+                                   </div>
+                               )}
+                               {/* メッセージ吹き出し */}
+                               <div className={`px-3 py-2 md:px-4 md:py-2.5 rounded-2xl max-w-[85%] break-words text-xs md:text-sm font-medium shadow-md leading-relaxed ${getMsgBubbleStyle(isMe)}`}>
+                                   {msg.text}
                                </div>
-                           )}
-                           {/* メッセージ本文 */}
-                           <div className={`px-3 py-2 md:px-4 md:py-2.5 rounded-2xl max-w-[85%] break-words text-xs md:text-sm font-medium shadow-md leading-relaxed ${getMsgBubbleStyle(isMe)}`}>
-                               {msg.text}
-                           </div>
-                           {/* 時刻表示 */}
-                           <span className="text-[9px] text-gray-600 mt-1 px-1 opacity-60">
-                               {msg.createdAt ? new Date(getMillis(msg.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
-                           </span>
+                               {/* 時刻表示 */}
+                               <span className="text-[9px] text-gray-600 mt-1 px-1 opacity-60">
+                                   {msg.createdAt ? new Date(getMillis(msg.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
+                               </span>
+                          </div>
                       </div>
                   );
               })}

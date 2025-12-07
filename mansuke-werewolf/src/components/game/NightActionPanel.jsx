@@ -95,6 +95,11 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
     // アクション完了済み判定
     const isActionDone = isDone || roomData?.nightActions?.[myLeaderId] !== undefined || (isSolo && roomData?.nightActions?.[myPlayer.id] !== undefined);
 
+    // チャット名決定ロジック (人狼陣営か、それ以外の役職か)
+    const chatName = ['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) 
+        ? "人狼チャット" 
+        : `${ROLE_DEFINITIONS[myRole]?.name || myRole}チャット`;
+
     // 暗殺者の能力使用済みチェック
     // roomDataのフラグを確認し、使用済みならメッセージを表示して完了扱いにする
     useEffect(() => {
@@ -325,7 +330,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                         <div>
                             <h3 className="text-lg font-bold text-white mb-2">{leaderName}が今夜の選択リーダーです</h3>
                             <div className="text-gray-400 text-sm leading-relaxed space-y-1">
-                                <p>①役職チャットで、誰を選択するかを話し合ってください。</p>
+                                <p>①{chatName}で、誰を選択するかを話し合ってください。</p>
                                 <p>②選択リーダーが、今夜の対象プレイヤーを選択するまでお待ちください。</p>
                                 <p>③選択リーダーから承認の申請が届きます。選択したプレイヤーが正しければ、承認してください。</p>
                             </div>
@@ -397,7 +402,7 @@ export const NightActionPanel = ({ myRole, players, onActionComplete, myPlayer, 
                     <div>
                         <h4 className="text-yellow-400 font-bold text-sm mb-1">あなたが今夜の選択リーダーです</h4>
                         <div className="text-xs text-yellow-200/80 space-y-1 leading-relaxed">
-                            <p>①役職チャットで、誰を選択するかを話し合ってください。</p>
+                            <p>①{chatName}で、誰を選択するかを話し合ってください。</p>
                             <p>②今夜の対象プレイヤーを選択し、決定を押してください。</p>
                             <p>③他の{['werewolf', 'greatwolf', 'wise_wolf'].includes(myRole) ? "人狼" : ROLE_DEFINITIONS[myRole]?.name}チームの方全員からの承認を確認次第、選択完了となります。</p>
                         </div>

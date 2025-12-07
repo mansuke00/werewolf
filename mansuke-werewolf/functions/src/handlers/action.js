@@ -150,12 +150,11 @@ exports.submitNightActionHandler = async (request) => {
                  // ログ追加：人狼チームのみ（狂人不可）
                  const wolfVisibleTo = wolfTeamMembers.map(p => p.id);
                  newLogs.push({ text: `賢狼が生存しているため、人狼チームに「${targetName}の正確な役職は${tgtRoleName}」との情報を提供しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: wolfVisibleTo });
-            } else {
-                 // 結果カード：情報なし（賢狼死亡orスキップ）
-                 resultCards.push({ label: `${targetName}の役職`, value: "情報なし", sub: `賢狼が死亡したため、${targetName}の役職は提供されません`, isBad: true, icon: "Moon" });
-            }
+            } 
+            // 賢狼死亡時は結果カードを生成しない（「情報なし」も表示しない）
             
             // 人狼チーム各個人のシークレットに結果カード配布
+            // resultCardsが空の場合は空配列で上書き（前回結果のクリア）
             wolfTeamMembers.forEach(w => {
                  t.set(roomRef.collection('players').doc(w.id).collection('secret').doc('actionResult'), { day: room.day, cards: resultCards }, { merge: true });
             });
@@ -338,10 +337,8 @@ exports.nightInteractionHandler = async (request) => {
                            // ログ追加（人狼チームのみ）
                            const visibleTo = wolfTeamMembers.map(p => p.id);
                            newLogs.push({ text: `賢狼が生存しているため、人狼チームに「${targetName}の正確な役職は${tgtRoleName}」との情報を提供しました。`, phase: `夜の行動`, day: room.day, secret: true, visibleTo: visibleTo });
-                      } else {
-                           // 結果カード：情報なし
-                           resultCards.push({ label: `${targetName}の役職`, value: "情報なし", sub: `賢狼が死亡したため、${targetName}の役職は提供されません`, isBad: true, icon: "Moon" });
-                      }
+                      } 
+                      // 賢狼死亡時は結果カードを生成しない
                       
                       // カード配布
                       wolfTeamMembers.forEach(w => {

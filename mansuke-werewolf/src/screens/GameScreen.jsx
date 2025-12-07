@@ -4,7 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
 import { ROLE_DEFINITIONS, TIME_LIMITS } from '../constants/gameData.js';
 import { getMillis, formatPhaseName } from '../utils/helpers.js';
-import { Loader, History, Mic, Gavel, CheckCircle, Sun, Moon, Clock, Settings, Users, ThumbsUp, Eye, LogOut, Skull, UserMinus, MessageSquare, Sparkles } from 'lucide-react';
+import { Loader, History, Mic, Gavel, CheckCircle, Sun, Moon, Clock, Settings, Users, ThumbsUp, Eye, LogOut, Skull, UserMinus, MessageSquare, Sparkles, FileText } from 'lucide-react';
 
 import { MiniRoleCard } from '../components/game/RoleCard.jsx';
 import { ChatPanel } from '../components/game/ChatPanel.jsx';
@@ -58,7 +58,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     const [notificationLocal, setNotificationLocal] = useState(null); // この画面内限定のトースト通知
     const [overlay, setOverlay] = useState(null); // 全画面オーバーレイ（フェーズ遷移演出等）
     const [lastActionResult, setLastActionResult] = useState(null); // 夜のアクション結果（占い結果等）
-    const [rightPanelTab, setRightPanelTab] = useState('chat'); // 右パネルのタブ切り替え ('chat' | 'gemini')
+    const [rightPanelTab, setRightPanelTab] = useState('chat'); // 右パネルのタブ切り替え ('chat' | 'gemini' | 'log')
     
     // ステート: 未読バッジ管理
     // チャット更新時に前回の件数と比較して増加分をカウント
@@ -66,6 +66,9 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
     const [unreadGemini, setUnreadGemini] = useState(0);
     const lastTeamMsgCountRef = useRef(0);
     const lastGeminiMsgCountRef = useRef(0);
+    // Ref: 初回ロード判定用 (初期データで未読がつかないようにする)
+    const isTeamChatLoaded = useRef(false);
+    const isGeminiChatLoaded = useRef(false);
     
     // ステート: 各種モーダル表示フラグ
     const [deadPlayersInfo, setDeadPlayersInfo] = useState([]); // 霊界用: 全プレイヤーの正体
@@ -248,6 +251,15 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
 
     // Effect: チームチャット未読件数カウント
     useEffect(() => {
+        // 初回ロード時はカウントせず、ロード済みフラグを立てるだけにする (大量の未読バッジ防止)
+        if (!isTeamChatLoaded.current) {
+            if (teamMessages.length > 0) {
+                isTeamChatLoaded.current = true;
+            }
+            lastTeamMsgCountRef.current = teamMessages.length;
+            return;
+        }
+
         if (teamMessages.length > lastTeamMsgCountRef.current) {
             // 現在のタブがチャット以外なら未読加算
             if (rightPanelTab !== 'chat') {
@@ -259,6 +271,15 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
 
     // Effect: Geminiチャット未読件数カウント
     useEffect(() => {
+        // 初回ロード時はカウントせず、ロード済みフラグを立てるだけにする
+        if (!isGeminiChatLoaded.current) {
+            if (geminiMessages.length > 0) {
+                isGeminiChatLoaded.current = true;
+            }
+            lastGeminiMsgCountRef.current = geminiMessages.length;
+            return;
+        }
+
         if (geminiMessages.length > lastGeminiMsgCountRef.current) {
             const lastMsg = geminiMessages[geminiMessages.length - 1];
             // AIからの返信かつタブがGemini以外の場合に未読加算
@@ -870,7 +891,7 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                         <>
                             {showActionPanel ? (
                                 <div className="flex-1 min-h-0 flex flex-col bg-gray-900/60 backdrop-blur-xl rounded-2xl border border-gray-700 overflow-hidden shadow-lg">
-                                    {/* タブ切り替え: 役職チャット / Gemini */}
+                                    {/* タブ切り替え: 役職チャット / Gemini / ログ */}
                                     <div className="flex border-b border-gray-700">
                                         <button 
                                             onClick={() => setRightPanelTab('chat')}
@@ -890,11 +911,17 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                                 <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce">{unreadGemini}</span>
                                             )}
                                         </button>
+                                        <button 
+                                            onClick={() => setRightPanelTab('log')}
+                                            className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition relative ${rightPanelTab === 'log' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-b-2 border-transparent'}`}
+                                        >
+                                            <FileText size={16}/> ログ
+                                        </button>
                                     </div>
                                     <div className="flex-1 min-h-0 relative">
                                         {rightPanelTab === 'chat' ? (
                                             <ChatPanel messages={teamMessages || []} user={user} teammates={teammates || []} myPlayer={safeMyPlayer} title={teamChatTitle} isTeamChat={true} onSendMessage={handleSendTeamMessage} currentDay={displayDay} currentPhase={displayPhase} disableFilter={true} />
-                                        ) : (
+                                        ) : rightPanelTab === 'gemini' ? (
                                             <GeminiChatPanel 
                                                 playerName={safeMyPlayer.name} 
                                                 inPersonMode={inPersonMode} 
@@ -903,6 +930,8 @@ export const GameScreen = ({ user, room, roomCode, players, myPlayer, setView, s
                                                 messages={geminiMessages} 
                                                 setMessages={setGeminiMessages} 
                                             />
+                                        ) : (
+                                            <LogPanel logs={logs || []} showSecret={isDead} user={user} />
                                         )}
                                     </div>
                                 </div>

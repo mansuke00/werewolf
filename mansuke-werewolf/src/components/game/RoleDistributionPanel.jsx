@@ -39,7 +39,7 @@ export const RoleDistributionPanel = ({ players, roleSettings }) => {
     ];
 
     return (
-        <div className="flex flex-col h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
+        <div className="flex flex-col h-full max-h-[70vh] lg:max-h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
             {/* ヘッダーエリア */}
             <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex items-center justify-between shrink-0">
                 {/* タイトル */}
@@ -84,7 +84,10 @@ export const RoleDistributionPanel = ({ players, roleSettings }) => {
                                                 {/* 役職名 */}
                                                 <span className="font-bold text-gray-200 text-xs md:text-sm truncate">{def.name}</span>
                                                 {/* 個別役職数 */}
-                                                <span className="font-mono font-black text-white bg-white/10 px-1.5 py-0.5 md:px-2 rounded text-[10px] md:text-xs shrink-0">x{count}</span>
+                                                {/* 視認性向上のためデザイン調整: 文字サイズ拡大、背景不透明度アップ、単位「名」追加 */}
+                                                <span className="font-mono font-black text-white bg-white/20 px-2 py-1 rounded text-xs md:text-sm shrink-0 min-w-[2.5rem] text-center ml-2 border border-white/10">
+                                                    {count}<span className="text-[10px] md:text-xs font-normal ml-0.5 opacity-80">名</span>
+                                                </span>
                                             </div>
                                             {/* 説明文 */}
                                             <p className="text-[9px] md:text-[10px] text-gray-500 leading-tight mt-0.5 truncate">{def.desc}</p>
