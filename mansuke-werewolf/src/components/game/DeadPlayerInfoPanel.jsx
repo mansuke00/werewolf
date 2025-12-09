@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Skull, User, Crown, Eye, WifiOff, Users, SortAsc, LayoutGrid, BadgeCheck } from 'lucide-react';
+import { Skull, User, Crown, Eye, WifiOff, Users, SortAsc, LayoutGrid, BadgeCheck, Ban } from 'lucide-react';
 import { ROLE_DEFINITIONS } from '../../constants/gameData';
 import { isPlayerOnline } from '../../utils/helpers';
 
@@ -33,6 +33,8 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
             // 呪われし者が人狼に覚醒している場合の表示変更
             if (p.originalRole === 'cursed' && roleKey === 'werewolf') {
                 roleName = "呪われし者 - 人狼陣営";
+            } else if (p.originalRole === 'cursed') {
+                roleName = "呪われし者 - 市民陣営";
             }
 
             const Icon = def ? def.icon : (isSpectator ? Eye : User);
@@ -154,7 +156,6 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                                         <span>{section.label}</span>
                                         <span className="bg-black/20 px-1.5 rounded text-[10px]">{players.length}</span>
                                     </div>
-                                    {/* ブロック内スクロールを削除 */}
                                     <div className="p-2 gap-2 grid grid-cols-1 bg-black/10">
                                         {players.map(p => <PlayerCard key={p.id} player={p} />)}
                                     </div>
@@ -179,7 +180,6 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
                                     <span className="bg-black/20 px-1.5 rounded text-[10px]">{totalCount}</span>
                                 </div>
                                 
-                                {/* ブロック内スクロールを削除 */}
                                 <div className="p-2 bg-black/10 space-y-2">
                                     {/* 役職ごとのブロック生成 */}
                                     {roleKeys.map(roleKey => {
@@ -211,7 +211,9 @@ export const DeadPlayerInfoPanel = ({ players, title = "プレイヤーの役職
     }, [viewMode, processedPlayers]);
 
     return (
-        <div className="flex flex-col h-full max-h-[70vh] lg:max-h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
+        // 高さ制限を追加 (h-[50vh] など) して、SPレイアウトでも伸びすぎないようにする
+        // lg:h-full でPCレイアウトでは親の高さに追従
+        <div className="flex flex-col w-full h-[50vh] lg:h-full bg-gray-900/80 backdrop-blur border border-gray-700 rounded-2xl overflow-hidden shadow-xl">
             {/* パネルヘッダー */}
             <div className="p-3 border-b border-gray-700 bg-gray-800/80 flex items-center justify-between shrink-0">
                 <span className="font-bold text-gray-200 flex items-center gap-2 text-sm truncate">
