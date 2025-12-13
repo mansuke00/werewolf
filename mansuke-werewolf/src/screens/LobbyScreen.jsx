@@ -1,15 +1,16 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Users, Crown, Settings, Mic, Play, Loader, Info, AlertTriangle, LogOut, Trash2, Shield, Moon, Sun, Ghost, Swords, Eye, Skull, Search, User, Crosshair, Smile, Check, Maximize2, Clock, X, BadgeCheck, Globe } from 'lucide-react';
-import { updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Users, Crown, Settings, Mic, Play, Loader, Info, AlertTriangle, LogOut, Trash2, Shield, Moon, Sun, Ghost, Swords, Eye, Skull, Search, User, Crosshair, Smile, Check, Maximize2, Clock, X, BadgeCheck, Globe, MessageSquare, Send, Calendar } from 'lucide-react';
+import { updateDoc, doc, deleteDoc, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase';
 import { isPlayerOnline } from '../utils/helpers';
-import { ROLE_DEFINITIONS } from '../constants/gameData';
+import { ROLE_DEFINITIONS, ROLE_GROUPS } from '../constants/gameData'; // ROLE_GROUPSをインポート
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { InfoModal } from '../components/ui/InfoModal';
 
 // 設定パネル用タブ定義
 const TABS = [
+    { id: 'chat', label: 'ロビーチャット', icon: MessageSquare, color: 'text-green-400', border: 'border-green-500/50', bg: 'bg-green-900/20' },
     { id: 'citizen', label: '市民陣営', icon: Shield, color: 'text-blue-400', border: 'border-blue-500/50', bg: 'bg-blue-900/20' },
     { id: 'werewolf', label: '人狼陣営', icon: Moon, color: 'text-red-400', border: 'border-red-500/50', bg: 'bg-red-900/20' },
     { id: 'third', label: '第三陣営', icon: Ghost, color: 'text-orange-400', border: 'border-orange-500/50', bg: 'bg-orange-900/20' },
@@ -18,25 +19,29 @@ const TABS = [
 
 // コンポーネント: 待機ロビー画面
 export const LobbyScreen = ({ user, room, roomCode, players, setNotification, setView, setRoomCode }) => {
-      // 1. フックの宣言を最上部に移動 (条件付きリターンより前に配置)
+      // 1. フックの宣言を最上部に移動
       
       // ブラウザ互換性チェックステート
       const [isBrowserSupported, setIsBrowserSupported] = useState(true);
 
       // ローカル設定ステート
-      // roomがまだnullの場合でもエラーにならないようオプショナルチェーン(?.)を使用
       const [roleSettings, setRoleSettings] = useState(room?.roleSettings || {});
       const [anonymousVoting, setAnonymousVoting] = useState(room?.anonymousVoting !== undefined ? room.anonymousVoting : true);
       const [inPersonMode, setInPersonMode] = useState(room?.inPersonMode !== undefined ? room.inPersonMode : false);
       const [discussionTime, setDiscussionTime] = useState(room?.discussionTime !== undefined ? room.discussionTime : 240); 
       const [loading, setLoading] = useState(false);
-      const [activeTab, setActiveTab] = useState('citizen'); 
+      const [activeTab, setActiveTab] = useState('chat');
+      
+      // チャット用State
+      const [messages, setMessages] = useState([]);
+      const [newMessage, setNewMessage] = useState('');
+      const messagesEndRef = useRef(null);
       
       // モーダル制御
       const [modalConfig, setModalConfig] = useState(null);
       const [showCodeModal, setShowCodeModal] = useState(false); 
       const [showDevActionModal, setShowDevActionModal] = useState(false); 
-
+      
       // Memo: 開発者バッジ表示用フラグ
       const hasDevPlayer = useMemo(() => players.some(p => p.isDev), [players]);
 
@@ -45,6 +50,7 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
       const validPlayerCount = validPlayers.length;
       
       // 配役合計数計算
+      // 画面に表示されていなくても、設定値として残っている場合はカウントに含める（矛盾を防ぐため）
       const totalAssigned = Object.values(roleSettings).reduce((a,b) => a+b, 0);
 
       // Memo: ゲーム開始条件バリデーション
@@ -98,13 +104,42 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           }
       }, [room]);
 
+      // Effect: ロビーチャットの購読
+      useEffect(() => {
+        if (!roomCode) return;
+    
+        const q = query(
+          collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'messages'),
+          where('channel', '==', 'lobby'),
+          orderBy('createdAt', 'asc'),
+          limit(100)
+        );
+    
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const msgs = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setMessages(msgs);
+        });
+    
+        return () => unsubscribe();
+      }, [roomCode]);
+
+      // Effect: メッセージ受信時にスクロール
+      useEffect(() => {
+        if (activeTab === 'chat') {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+      }, [messages, activeTab]);
+
       // --------------------------------------------------------------------------------
-      // 2. 変数定義 (フックではないが、レンダリングに必要なもの)
+      // 2. 変数定義
       // --------------------------------------------------------------------------------
       
       const myPlayer = players.find(p => p.id === user?.uid);
       const isDev = myPlayer?.isDev === true;
-      const isHostUser = room?.hostId === user?.uid; // roomがnullの可能性を考慮
+      const isHostUser = room?.hostId === user?.uid;
       const hasControl = isHostUser || isDev;
 
       // 関数群定義
@@ -209,10 +244,24 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
           if (hasControl) updateDoc(doc(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode), { discussionTime: val });
       };
 
-      const roleGroups = {
-          citizen: ['citizen', 'seer', 'medium', 'knight', 'trapper', 'sage', 'killer', 'detective', 'elder', 'assassin'],
-          werewolf: ['werewolf', 'greatwolf', 'wise_wolf', 'madman'],
-          third: ['fox', 'teruteru', 'cursed']
+      // チャット送信処理
+      const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !user) return;
+
+        try {
+            await addDoc(collection(db, 'artifacts', 'mansuke-jinro', 'public', 'data', 'rooms', roomCode, 'messages'), {
+                text: newMessage,
+                senderId: user.uid,
+                senderName: user.displayName || '名無し',
+                channel: 'lobby',
+                createdAt: serverTimestamp(),
+            });
+            setNewMessage('');
+        } catch (error) {
+            console.error("Error sending message:", error);
+            setNotification({ message: "メッセージの送信に失敗しました", type: "error" });
+        }
       };
 
       // --------------------------------------------------------------------------------
@@ -453,9 +502,9 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                                   >
                                       <tab.icon size={16} />
                                       {tab.label}
-                                      {tab.id !== 'rules' && (
+                                      {tab.id !== 'rules' && tab.id !== 'chat' && (
                                           <span className="ml-1 text-[10px] opacity-60 bg-black/30 px-1.5 rounded-full">
-                                              {roleGroups[tab.id].reduce((acc, key) => acc + (roleSettings[key] || 0), 0)}
+                                              {ROLE_GROUPS[tab.id].reduce((acc, key) => acc + (roleSettings[key] || 0), 0)}
                                           </span>
                                       )}
                                   </button>
@@ -466,14 +515,87 @@ export const LobbyScreen = ({ user, room, roomCode, players, setNotification, se
                       {/* 設定コンテンツエリア */}
                       <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar relative">
                           
+                          {/* ロビーチャットタブ */}
+                          {activeTab === 'chat' && (
+                              <div className="flex flex-col h-full animate-fade-in">
+                                  {/* チャットログエリア */}
+                                  <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar min-h-0">
+                                      {messages.length === 0 ? (
+                                          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                                              <MessageSquare size={48} className="mb-4 opacity-20" />
+                                              <p className="text-sm">まだメッセージはありません</p>
+                                              <p className="text-xs mt-1">挨拶してみましょう！</p>
+                                          </div>
+                                      ) : (
+                                          messages.map(msg => {
+                                              const isMe = msg.senderId === user.uid;
+                                              return (
+                                                  <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                                                      <div className={`flex items-baseline gap-2 mb-1 ${isMe ? "flex-row-reverse" : ""}`}>
+                                                          <span className="text-xs font-bold text-gray-400">{msg.senderName}</span>
+                                                          <span className="text-[10px] text-gray-600">
+                                                              {msg.createdAt?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                          </span>
+                                                      </div>
+                                                      <div className={`px-4 py-2 rounded-2xl text-sm max-w-[85%] break-words ${
+                                                          isMe 
+                                                          ? "bg-green-600 text-white rounded-tr-none" 
+                                                          : "bg-gray-800 text-gray-200 rounded-tl-none border border-gray-700"
+                                                      }`}>
+                                                          {msg.text}
+                                                      </div>
+                                                  </div>
+                                              );
+                                          })
+                                      )}
+                                      <div ref={messagesEndRef} />
+                                  </div>
+                                  
+                                  {/* 入力フォーム */}
+                                  <form onSubmit={handleSendMessage} className="flex gap-2 shrink-0 pt-2 border-t border-gray-800">
+                                      <input
+                                          type="text"
+                                          value={newMessage}
+                                          onChange={(e) => setNewMessage(e.target.value)}
+                                          placeholder="メッセージを入力..."
+                                          className="flex-1 bg-gray-800/50 border border-gray-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-green-500/50 focus:bg-gray-800 transition placeholder-gray-500"
+                                      />
+                                      <button
+                                          type="submit"
+                                          disabled={!newMessage.trim()}
+                                          className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition-colors shadow-lg shadow-green-900/20"
+                                      >
+                                          <Send size={20} />
+                                      </button>
+                                  </form>
+                              </div>
+                          )}
+
                           {/* 役職設定 (市民・人狼・第三陣営) */}
                           {['citizen', 'werewolf', 'third'].includes(activeTab) && (
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 animate-fade-in">
-                                  {roleGroups[activeTab].map(key => {
+                                  {ROLE_GROUPS[activeTab].map(key => {
                                       const def = ROLE_DEFINITIONS[key];
                                       const count = roleSettings[key] || 0;
+
+                                      // 期間限定役職などの表示設定チェック
+                                      // isVisibleがfalseと明示されている場合のみ非表示（undefinedやtrueは表示）
+                                      if (def.isVisible === false) {
+                                          return null;
+                                      }
+
                                       return (
                                           <div key={key} className={`relative flex flex-col h-full p-3 rounded-2xl border transition-all ${count > 0 ? "bg-gray-800/80 border-gray-600 shadow-lg" : "bg-gray-900/40 border-gray-800 opacity-60 hover:opacity-100"}`}>
+                                              
+                                              {/* バッジ表示 */}
+                                              {def.badge && (
+                                                  <div className={`absolute -top-2 -right-2 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm z-10 flex items-center gap-1 ${def.badge.color || "bg-yellow-500 text-black"}`}>
+                                                      {/* 必要に応じてアイコンも可変にできますが、一旦Calendar固定か、badgeオブジェクトにiconを持たせることも可能です */}
+                                                      <Calendar size={10} />
+                                                      {def.badge.label}
+                                                  </div>
+                                              )}
+
                                               <div className={`mb-2 p-2 rounded-xl w-fit shrink-0 ${count > 0 ? (activeTab==='citizen'?'bg-blue-500/20 text-blue-400':activeTab==='werewolf'?'bg-red-500/20 text-red-400':'bg-orange-500/20 text-orange-400') : "bg-gray-800 text-gray-600"}`}>
                                                   {React.createElement(def.icon, { size: 20 })}
                                               </div>

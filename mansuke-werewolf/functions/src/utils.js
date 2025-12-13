@@ -44,16 +44,27 @@ const checkWin = (players, deadIds, room) => {
   // てるてる坊主勝利判定（追加勝利）は別途 room.teruteruWon で管理するが、
   // ここではメインの勝敗（ゲーム終了条件）を返す
   
-  // 優先順位1: 妖狐勝利
-  // 妖狐が生存していれば、人狼全滅などの条件に関わらず妖狐勝利となる（人狼等の勝利を上書き）
-  if (fox) return 'fox';
-  
+  // まず、基本的なゲーム終了条件（人狼全滅 または 人狼が人間を上回る）を判定
+  let primaryWinner = null;
+
   // 優先順位2: 市民勝利（人狼全滅）
-  if (wolves === 0) return 'citizen';
-  
+  if (wolves === 0) {
+    primaryWinner = 'citizen';
+  }
   // 優先順位3: 人狼勝利（人狼の数が人間以上）
   // 狂人はhumansに含まれているため、純粋な人狼数 vs その他の人数で判定
-  if (wolves >= humans) return 'werewolf';
+  else if (wolves >= humans) {
+    primaryWinner = 'werewolf';
+  }
+  
+  // 勝敗が決した場合の処理
+  if (primaryWinner) {
+      // 優先順位1: 妖狐勝利
+      // 妖狐が生存していれば、人狼全滅などの条件に関わらず妖狐勝利となる（人狼等の勝利を上書き）
+      if (fox) return 'fox';
+      
+      return primaryWinner;
+  }
   
   // 決着つかず
   return null;

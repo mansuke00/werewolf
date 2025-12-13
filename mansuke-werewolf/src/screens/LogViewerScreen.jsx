@@ -5,7 +5,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase.js';
 import { LogPanel } from '../components/game/LogPanel.jsx';
 import { DeadPlayerInfoPanel } from '../components/game/DeadPlayerInfoPanel.jsx';
-import { ROLE_DEFINITIONS } from '../constants/gameData'; // 追加
+import { ROLE_DEFINITIONS } from '../constants/gameData';
 
 const safeGetMillis = (timestamp) => {
     if (!timestamp) return 0;
@@ -186,17 +186,24 @@ export const LogViewerScreen = ({ setView }) => {
             chatMessages: chatMessages
         });
         setShowDetail(true);
-        setDetailTab('info'); 
+        setDetailTab('info');
         setLoading(false);
     };
 
     const groupedChatMessages = useMemo(() => {
         if (!searchResult?.chatMessages) return [];
+        
+        // 生存者チャット(public)のみにフィルタリング
+        const filteredMessages = searchResult.chatMessages.filter(msg => {
+            const channel = msg.channel || 'public'; 
+            return channel === 'public';
+        });
+
         const groups = [];
         let currentDay = null;
         let currentGroup = null;
 
-        searchResult.chatMessages.forEach(msg => {
+        filteredMessages.forEach(msg => {
             const day = msg.day !== undefined ? msg.day : 1;
             if (day !== currentDay) {
                 if (currentGroup) groups.push(currentGroup);
@@ -550,7 +557,7 @@ export const LogViewerScreen = ({ setView }) => {
                                                                 </span>
                                                                 <span className="text-[9px] text-gray-600">{new Date(safeGetMillis(msg.createdAt)).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                                                             </div>
-                                                            <div className="bg-gray-800/80 p-3 rounded-2xl rounded-tl-none border border-gray-700/50 text-sm text-gray-200 break-words max-w-full shadow-sm">
+                                                            <div className="bg-gray-800/80 border-gray-700/50 text-gray-200 p-3 rounded-2xl rounded-tl-none border text-sm break-words max-w-full shadow-sm">
                                                                 {msg.text}
                                                             </div>
                                                         </div>
